@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Younger Baobab — A Living Lineage</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Manrope:wght@400;600;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: #14101f; }
+  #scene { position: fixed; inset: 0; }
+
+  /* ---------- title ---------- */
+  .title {
+    position: fixed; top: 34px; left: 40px; z-index: 5; pointer-events: none;
+  }
+  .title h1 {
+    font-family: 'Cormorant Garamond', serif; font-weight: 600;
+    font-size: clamp(26px, 3.4vw, 44px); color: #EAD9B0; letter-spacing: .04em;
+  }
+  .title p {
+    font-family: Manrope, sans-serif; font-size: 11px; letter-spacing: .42em;
+    color: #B98C5A; margin-top: 6px;
+  }
+
+  .hint {
+    position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);
+    font-family: Manrope, sans-serif; font-size: 11px; letter-spacing: .3em;
+    color: #6e6386; z-index: 5; pointer-events: none;
+  }
+
+  /* ---------- glass card ---------- */
+  .card {
+    position: fixed; top: 50%; right: -380px; transform: translateY(-50%);
+    width: 320px; z-index: 10; padding: 26px 28px;
+    border-radius: 18px;
+    background: rgba(34, 26, 50, 0.42);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid rgba(234, 217, 176, 0.22);
+    box-shadow: 0 30px 80px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.12);
+    pointer-events: none;
+  }
+  .card .gen {
+    font-family: Manrope, sans-serif; font-size: 10px; letter-spacing: .38em;
+    color: #B98C5A; text-transform: uppercase;
+  }
+  .card h2 {
+    font-family: 'Cormorant Garamond', serif; font-weight: 600;
+    font-size: 30px; color: #F4E9CE; margin-top: 8px; line-height: 1.05;
+  }
+  .card .dates {
+    font-family: Manrope, sans-serif; font-size: 13px; color: #CBB7E0;
+    margin-top: 10px; letter-spacing: .08em;
+  }
+  .card .loc {
+    font-family: Manrope, sans-serif; font-size: 11px; color: #8d7fae;
+    margin-top: 14px; letter-spacing: .18em; text-transform: uppercase;
+  }
+  .card .vein {
+    height: 2px; width: 46px; margin-top: 16px; border-radius: 2px;
+    background: linear-gradient(90deg, #46C8FF, transparent);
+    box-shadow: 0 0 12px #46C8FF88;
+  }
+
+  /* ---------- ripple ---------- */
+  .ripple {
+    position: fixed; border-radius: 50%; pointer-events: none; z-index: 2;
+    border: 1px solid rgba(70, 200, 255, 0.5);
+    transform: translate(-50%, -50%) scale(0);
+  }
+</style>
+</head>
+<body>
+<div id="scene"></div>
+
+<div class="title">
+  <h1>The Younger Baobab</h1>
+  <p>ROOTS · TRUNK · CANOPY — A LIVING LINEAGE</p>
+</div>
+<div class="hint">MOVE TO SWAY THE TREE · HOVER A LIGHT TO MEET AN ANCESTOR</div>
+
+<div class="card" id="card">
+  <div class="gen" id="cardGen">GENERATION</div>
+  <h2 id="cardName">Name</h2>
+  <div class="dates" id="cardDates">0000–0000</div>
+  <div class="loc" id="cardLoc">Location to be added</div>
+  <div class="vein"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+/* ================= FAMILY DATA ================= */
+const FAMILY = [
+  { gen: "Root · Early Ancestors", name: "Thomas Younger I", dates: "1761–1834", zone: "root", slot: 0 },
+  { gen: "Root · Early Ancestors", name: "Mary (Nall)", dates: "1768–1864", zone: "root", slot: 1 },
+  { gen: "4th Great-Grandparents", name: "Alexander Younger", dates: "1787–1866", zone: "root", slot: 2 },
+  { gen: "4th Great-Grandparents", name: "C.", dates: "1780–1870", zone: "root", slot: 3 },
+  { gen: "3rd Great-Grandparents · The Convergence", name: "Frank Younger", dates: "1820–1907", zone: "trunk", slot: 0 },
+  { gen: "3rd Great-Grandparents · The Convergence", name: "Angeline Younger", dates: "1844–Unknown", zone: "trunk", slot: 1 },
+  { gen: "2nd Great-Grandparents", name: "Lonnie Lee Younger", dates: "1871–1934", zone: "branchLow", slot: 0 },
+  { gen: "2nd Great-Grandparents", name: "Rachel Arie Sneed", dates: "1877–1956", zone: "branchLow", slot: 1 },
+  { gen: "2nd Great-Grandparents", name: "Turner Brown", dates: "1885–Unknown", zone: "branchLow", slot: 2 },
+  { gen: "2nd Great-Grandparents", name: "Lula Corbin", dates: "1886–Unknown", zone: "branchLow", slot: 3 },
+  { gen: "2nd Great-Grandparents", name: "Alodis Bagby", dates: "1900–1934", zone: "branchLow", slot: 4 },
+  { gen: "2nd Great-Grandparents", name: "Sadie Bagby", dates: "1905–1988", zone: "branchLow", slot: 5 },
+  { gen: "Great-Grandparents", name: "Ralleigh Younger", dates: "1898–1937", zone: "branchMid", slot: 0 },
+  { gen: "Great-Grandparents", name: "Bessie Brown", dates: "1903–1983", zone: "branchMid", slot: 1 },
+  { gen: "Great-Grandparents", name: "King S Jones", dates: "1914–1959", zone: "branchMid", slot: 2 },
+  { gen: "Great-Grandparents", name: "Pellige Nicholson", dates: "1917–1997", zone: "branchMid", slot: 3 },
+  { gen: "Great-Grandparents", name: "Edgar Thompson", dates: "1923–1990", zone: "branchMid", slot: 4 },
+  { gen: "Great-Grandparents", name: "Barbara J Bagby", dates: "1928–2014", zone: "branchMid", slot: 5 },
+  { gen: "Grandparents", name: "Lee Younger", dates: "1935–1980", zone: "branchHigh", slot: 0 },
+  { gen: "Grandparents", name: "Willetta L Younger", dates: "1937–2010", zone: "branchHigh", slot: 1 },
+  { gen: "Grandparents", name: "William Tucker", dates: "Living", zone: "branchHigh", slot: 2 },
+  { gen: "Grandparents", name: "Beverly Thompson", dates: "1949–2016", zone: "branchHigh", slot: 3 },
+  { gen: "Parents & Relatives", name: "Lee Edward Younger", dates: "Living", zone: "crownRing", slot: 0 },
+  { gen: "Parent", name: "Lee Younger", dates: "1972–Living", zone: "crownRing", slot: 1 },
+  { gen: "Parent", name: "Michquelin Tucker", dates: "1972–Living", zone: "crownRing", slot: 2 },
+  { gen: "Self", name: "Lee Younger", dates: "1991–Living", zone: "crown", slot: 0 },
+];
+
+/* ================= SCENE ================= */
+const container = document.getElementById("scene");
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x14101f);            // deep indigo void
+scene.fog = new THREE.FogExp2(0x14101f, 0.028);
+
+const camera = new THREE.PerspectiveCamera(46, innerWidth / innerHeight, 0.1, 200);
+camera.position.set(0, 7.5, 30);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
+
+/* ---------- lighting: moody + overhead spot ---------- */
+scene.add(new THREE.AmbientLight(0x4a3a55, 0.55));
+
+const spot = new THREE.SpotLight(0xffe2b0, 1.25, 90, Math.PI / 5, 0.45, 1.2);
+spot.position.set(6, 34, 10);
+spot.castShadow = true;
+spot.shadow.mapSize.set(2048, 2048);
+scene.add(spot);
+scene.add(spot.target);
+
+const rim = new THREE.DirectionalLight(0xb0316e, 0.35);  // terracotta-magenta rim
+rim.position.set(-14, 8, -10);
+scene.add(rim);
+
+const groundGlow = new THREE.PointLight(0x46c8ff, 0.5, 18);
+groundGlow.position.set(0, -2.5, 0);
+scene.add(groundGlow);
+
+/* ---------- ground ---------- */
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(60, 48),
+  new THREE.MeshStandardMaterial({ color: 0x1b1426, roughness: 1 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+/* ================= TREE GROUP ================= */
+const tree = new THREE.Group();
+scene.add(tree);
+
+const barkMat = new THREE.MeshStandardMaterial({ color: 0x5a4030, roughness: 0.92, metalness: 0.05 });
+const rootMat = new THREE.MeshStandardMaterial({ color: 0x4a3326, roughness: 0.95 });
+
+/* displaced, organic trunk */
+function makeTrunk() {
+  const geo = new THREE.CylinderGeometry(1.5, 3.1, 11, 24, 18, true);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const n = Math.sin(y * 1.7 + x * 2.3) * 0.16 + Math.cos(z * 2.6 + y) * 0.13;
+    const r = 1 + n;
+    pos.setX(i, x * r);
+    pos.setZ(i, z * r);
+  }
+  geo.computeVertexNormals();
+  const trunk = new THREE.Mesh(geo, barkMat);
+  trunk.position.y = 5.5;
+  trunk.castShadow = true;
+  return trunk;
+}
+const trunk = makeTrunk();
+tree.add(trunk);
+
+/* curves: stored so energy pulses can ride them */
+const veinCurves = [];
+
+function tube(points, r0, mat, taper = true) {
+  const curve = new THREE.CatmullRomCurve3(points);
+  const geo = new THREE.TubeGeometry(curve, 32, r0, 8, false);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = true;
+  veinCurves.push(curve);
+  return mesh;
+}
+
+/* ---------- roots (paternal line, digging into earth) ---------- */
+const rootTips = [];
+for (let i = 0; i < 6; i++) {
+  const a = (i / 6) * Math.PI * 2 + 0.4;
+  const reach = 6.5 + (i % 3) * 1.6;
+  const tip = new THREE.Vector3(Math.cos(a) * reach, -3.4 - (i % 2) * 1.3, Math.sin(a) * reach);
+  const pts = [
+    new THREE.Vector3(Math.cos(a) * 1.6, 0.6, Math.sin(a) * 1.6),
+    new THREE.Vector3(Math.cos(a) * 3.4, -0.9, Math.sin(a) * 3.4),
+    new THREE.Vector3(Math.cos(a) * (reach * 0.75), -2.2, Math.sin(a) * (reach * 0.75)),
+    tip,
+  ];
+  tree.add(tube(pts, 0.42 - (i % 3) * 0.07, rootMat));
+  rootTips.push(tip);
+}
+
+/* ---------- branches (the legacy, reaching wide) ---------- */
+const branchAnchors = { branchLow: [], branchMid: [], branchHigh: [], crownRing: [], crown: [] };
+const TOP = new THREE.Vector3(0, 11, 0);
+
+function growBranch(angle, lift, reach, radius, store, count) {
+  for (let k = 0; k < count; k++) {
+    const a = angle + k * ((Math.PI * 2) / count);
+    const end = new THREE.Vector3(
+      Math.cos(a) * reach,
+      11 + lift + Math.sin(k * 2.1) * 0.7,
+      Math.sin(a) * reach
+    );
+    const pts = [
+      TOP.clone(),
+      new THREE.Vector3(Math.cos(a) * reach * 0.4, 11 + lift * 0.55, Math.sin(a) * reach * 0.4),
+      new THREE.Vector3(Math.cos(a) * reach * 0.8, 11 + lift * 0.9, Math.sin(a) * reach * 0.8),
+      end,
+    ];
+    tree.add(tube(pts, radius, barkMat));
+    branchAnchors[store].push(end);
+  }
+}
+growBranch(0.2, 1.6, 7.5, 0.3, "branchLow", 6);
+growBranch(0.75, 3.4, 6.4, 0.24, "branchMid", 6);
+growBranch(0.4, 5.2, 4.9, 0.2, "branchHigh", 4);
+growBranch(1.0, 6.6, 3.0, 0.15, "crownRing", 3);
+branchAnchors.crown.push(new THREE.Vector3(0, 18.6, 0));
+/* crown spire */
+tree.add(tube([TOP.clone(), new THREE.Vector3(0.4, 15, -0.3), new THREE.Vector3(0, 18.6, 0)], 0.22, barkMat));
+
+/* ---------- soft canopy blobs ---------- */
+const canopyMat = new THREE.MeshStandardMaterial({ color: 0x223a2a, roughness: 1, transparent: true, opacity: 0.85 });
+[["branchLow", 2.2], ["branchMid", 1.9], ["branchHigh", 1.6], ["crownRing", 1.3]].forEach(([zone, s]) => {
+  branchAnchors[zone].forEach((p) => {
+    const blob = new THREE.Mesh(new THREE.SphereGeometry(s, 12, 10), canopyMat);
+    blob.position.copy(p).y += s * 0.5;
+    blob.scale.y = 0.7;
+    tree.add(blob);
+  });
+});
+
+/* ================= ANCESTOR NODES ================= */
+const nodeGroup = new THREE.Group();
+tree.add(nodeGroup);
+const nodeGeo = new THREE.SphereGeometry(0.34, 18, 18);
+const haloTex = makeHaloTexture();
+const nodes = [];
+
+function makeHaloTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d");
+  const grad = g.createRadialGradient(64, 64, 4, 64, 64, 64);
+  grad.addColorStop(0, "rgba(255,214,130,0.9)");
+  grad.addColorStop(0.4, "rgba(255,190,90,0.35)");
+  grad.addColorStop(1, "rgba(255,190,90,0)");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+}
+
+FAMILY.forEach((person) => {
+  let p;
+  if (person.zone === "root") p = rootTips[person.slot % rootTips.length].clone().multiplyScalar(0.96);
+  else if (person.zone === "trunk") p = new THREE.Vector3(person.slot ? 1.9 : -1.9, 4.4 + person.slot * 2.4, 1.4);
+  else p = branchAnchors[person.zone][person.slot % branchAnchors[person.zone].length].clone();
+
+  const isSelf = person.zone === "crown";
+  const mat = new THREE.MeshStandardMaterial({
+    color: isSelf ? 0xfff1c4 : 0xffd682,
+    emissive: isSelf ? 0xffc24d : 0xb97a1e,
+    emissiveIntensity: isSelf ? 1.4 : 0.7,
+    roughness: 0.35,
+  });
+  const m = new THREE.Mesh(nodeGeo, mat);
+  m.position.copy(p);
+  if (isSelf) m.scale.setScalar(1.5);
+  m.userData = person;
+
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, transparent: true, opacity: 0, depthWrite: false }));
+  halo.scale.setScalar(2.4);
+  m.add(halo);
+  m.userData.halo = halo;
+
+  nodeGroup.add(m);
+  nodes.push(m);
+});
+
+/* ================= ASHE — blue energy pulses ================= */
+const pulseMat = new THREE.MeshBasicMaterial({ color: 0x46c8ff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending });
+const pulses = [];
+for (let i = 0; i < 26; i++) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), pulseMat);
+  m.userData = { curve: veinCurves[i % veinCurves.length], t: Math.random(), speed: 0.0016 + Math.random() * 0.0024 };
+  tree.add(m);
+  pulses.push(m);
+}
+const trunkPath = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(0, -0.5, 0), new THREE.Vector3(0.3, 4, -0.2), new THREE.Vector3(-0.2, 8, 0.2), TOP.clone(),
+]);
+for (let i = 0; i < 10; i++) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 8), pulseMat);
+  m.userData = { curve: trunkPath, t: Math.random(), speed: 0.002 + Math.random() * 0.002 };
+  tree.add(m);
+  pulses.push(m);
+}
+
+/* ================= golden ember particles ================= */
+const COUNT = 600;
+const pGeo = new THREE.BufferGeometry();
+const pPos = new Float32Array(COUNT * 3);
+const pSeed = new Float32Array(COUNT);
+for (let i = 0; i < COUNT; i++) {
+  pPos[i * 3] = (Math.random() - 0.5) * 44;
+  pPos[i * 3 + 1] = Math.random() * 24 - 4;
+  pPos[i * 3 + 2] = (Math.random() - 0.5) * 44;
+  pSeed[i] = Math.random() * Math.PI * 2;
+}
+pGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3));
+const embers = new THREE.Points(pGeo, new THREE.PointsMaterial({
+  color: 0xffc870, size: 0.14, transparent: true, opacity: 0.8,
+  blending: THREE.AdditiveBlending, depthWrite: false,
+}));
+scene.add(embers);
+
+/* ================= INTERACTION ================= */
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2(-2, -2);
+let targetRX = 0, targetRY = 0;
+let hovered = null;
+
+const card = document.getElementById("card");
+const cardGen = document.getElementById("cardGen");
+const cardName = document.getElementById("cardName");
+const cardDates = document.getElementById("cardDates");
+const cardLoc = document.getElementById("cardLoc");
+
+addEventListener("mousemove", (e) => {
+  mouse.x = (e.clientX / innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / innerHeight) * 2 + 1;
+  targetRY = mouse.x * 0.22;
+  targetRX = -mouse.y * 0.08;
+});
+
+function ripple(x, y) {
+  const r = document.createElement("div");
+  r.className = "ripple";
+  r.style.left = x + "px";
+  r.style.top = y + "px";
+  r.style.width = r.style.height = "20px";
+  document.body.appendChild(r);
+  gsap.to(r, { scale: 14, opacity: 0, duration: 1.4, ease: "power2.out", onComplete: () => r.remove() });
+}
+
+function setHover(node, e) {
+  if (hovered === node) return;
+  if (hovered) {
+    gsap.to(hovered.scale, { x: hovered.userData.zone === "crown" ? 1.5 : 1, y: hovered.userData.zone === "crown" ? 1.5 : 1, z: hovered.userData.zone === "crown" ? 1.5 : 1, duration: 0.5 });
+    gsap.to(hovered.userData.halo.material, { opacity: 0, duration: 0.5 });
+  }
+  hovered = node;
+  if (node) {
+    const s = node.userData.zone === "crown" ? 2.0 : 1.45;
+    gsap.to(node.scale, { x: s, y: s, z: s, duration: 0.6, ease: "back.out(2)" });
+    gsap.to(node.userData.halo.material, { opacity: 1, duration: 0.6 });
+    cardGen.textContent = node.userData.gen;
+    cardName.textContent = node.userData.name;
+    cardDates.textContent = node.userData.dates;
+    cardLoc.textContent = "Location to be added";
+    gsap.to(card, { right: 36, duration: 0.7, ease: "power3.out" });
+    if (e) ripple(e.clientX, e.clientY);
+    document.body.style.cursor = "pointer";
+  } else {
+    gsap.to(card, { right: -380, duration: 0.6, ease: "power3.in" });
+    document.body.style.cursor = "default";
+  }
+}
+
+addEventListener("mousemove", (e) => {
+  raycaster.setFromCamera(mouse, camera);
+  const hit = raycaster.intersectObjects(nodes, false)[0];
+  setHover(hit ? hit.object : null, e);
+});
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ================= LOOP ================= */
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  /* breathing trunk — the lineage is alive */
+  const breath = 1 + Math.sin(t * 0.9) * 0.018;
+  trunk.scale.set(breath, 1, breath);
+
+  /* gentle parallax sway */
+  tree.rotation.y += (targetRY - tree.rotation.y) * 0.04;
+  tree.rotation.x += (targetRX - tree.rotation.x) * 0.04;
+  tree.rotation.z = Math.sin(t * 0.25) * 0.012;
+
+  /* ashe pulses riding the veins */
+  pulses.forEach((p) => {
+    p.userData.t = (p.userData.t + p.userData.speed) % 1;
+    p.position.copy(p.userData.curve.getPointAt(p.userData.t));
+    p.material.opacity = 0.5 + Math.sin(p.userData.t * Math.PI) * 0.5;
+  });
+
+  /* drifting embers */
+  const pos = embers.geometry.attributes.position;
+  for (let i = 0; i < COUNT; i++) {
+    pos.array[i * 3 + 1] += 0.006 + Math.sin(pSeed[i]) * 0.002;
+    pos.array[i * 3] += Math.sin(t * 0.4 + pSeed[i]) * 0.004;
+    if (pos.array[i * 3 + 1] > 22) pos.array[i * 3 + 1] = -4;
+  }
+  pos.needsUpdate = true;
+
+  /* node shimmer */
+  nodes.forEach((n, i) => {
+    n.material.emissiveIntensity = (n.userData.zone === "crown" ? 1.4 : 0.7) + Math.sin(t * 2 + i) * 0.18;
+  });
+
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
