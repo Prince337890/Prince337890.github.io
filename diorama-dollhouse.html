@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cutaway Diorama — Dollhouse</title>
+<style>
+  :root{
+    --accent-top:#ff2bd6;     /* Party */
+    --accent-mid:#00d98a;     /* Active */
+    --accent-bot:#a87aff;     /* Lazy */
+    --ink:#e8edf2;
+    --muted:#8a94a3;
+    --panel:rgba(12,16,22,.62);
+    --line:rgba(255,255,255,.10);
+  }
+  html,body{margin:0;height:100%;background:#05070b;overflow:hidden;
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  #app{position:fixed;inset:0}
+  canvas{display:block}
+  #vignette{position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(120% 90% at 50% 42%,transparent 55%,rgba(0,0,0,.55) 100%);
+    mix-blend-mode:multiply}
+  #frameline{position:fixed;inset:18px;pointer-events:none;border:1px solid rgba(255,255,255,.06)}
+
+  .panel{position:fixed;backdrop-filter:blur(9px);background:var(--panel);
+    border:1px solid var(--line);border-radius:10px}
+
+  #hud{left:24px;bottom:24px;padding:14px 16px 12px;min-width:236px}
+  #clock{font-size:34px;font-weight:300;letter-spacing:.06em;line-height:1}
+  #clock small{font-size:12px;color:var(--muted);letter-spacing:.18em;margin-left:8px}
+  #daylabel{font-size:10px;color:var(--muted);letter-spacing:.24em;
+    text-transform:uppercase;margin:8px 0 12px}
+  .ctl{display:flex;align-items:center;gap:10px;margin-top:8px}
+  #play{appearance:none;border:1px solid var(--line);background:transparent;color:var(--ink);
+    font:inherit;font-size:11px;letter-spacing:.14em;padding:6px 12px;border-radius:6px;cursor:pointer}
+  #play:hover{border-color:rgba(255,255,255,.3)}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:2px;background:var(--line);
+    border-radius:2px;flex:1;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;
+    border-radius:50%;background:var(--ink);cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;
+    background:var(--ink);border:none;cursor:pointer}
+  .ctl label{font-size:10px;color:var(--muted);letter-spacing:.16em}
+
+  #legend{left:24px;top:24px;padding:13px 15px}
+  #legend h1{font-size:10px;letter-spacing:.28em;color:var(--muted);
+    text-transform:uppercase;font-weight:500;margin:0 0 12px}
+  .floor{display:grid;grid-template-columns:10px 1fr;gap:10px;align-items:start;margin:11px 0}
+  .swatch{width:10px;height:10px;margin-top:3px;border-radius:2px;box-shadow:0 0 10px currentColor}
+  .floor .name{font-size:12px;letter-spacing:.08em}
+  .floor .state{font-size:10px;color:var(--muted);letter-spacing:.06em;margin-top:2px}
+  .t .swatch,.t .name{color:var(--accent-top)}
+  .m .swatch,.m .name{color:var(--accent-mid)}
+  .b .swatch,.b .name{color:var(--accent-bot)}
+
+  #hint{right:24px;bottom:24px;color:var(--muted);font-size:10px;
+    letter-spacing:.12em;text-align:right;line-height:1.7;pointer-events:none}
+</style>
+
+<div id="app"></div>
+<div id="vignette"></div>
+<div id="frameline"></div>
+
+<div id="legend" class="panel">
+  <h1>The Tenement · Dollhouse</h1>
+  <div class="floor t"><span class="swatch">█</span>
+    <div><div class="name">03 — THE PARTY PAD</div><div class="state" id="s2">—</div></div></div>
+  <div class="floor m"><span class="swatch">█</span>
+    <div><div class="name">02 — THE PRODUCTIVE LOFT</div><div class="state" id="s1">—</div></div></div>
+  <div class="floor b"><span class="swatch">█</span>
+    <div><div class="name">01 — THE COZY CAVE</div><div class="state" id="s0">—</div></div></div>
+</div>
+
+<div id="hud" class="panel">
+  <div id="clock">06:00<small>LOCAL</small></div>
+  <div id="daylabel">— dawn —</div>
+  <div class="ctl"><button id="play">⏸ PAUSE</button>
+    <label>SPD</label><input id="speed" type="range" min="0.2" max="8" step="0.2" value="2.5"></div>
+</div>
+
+<div id="hint" class="panel" style="padding:8px 12px">drag · orbit&nbsp;&nbsp;|&nbsp;&nbsp;scroll · dolly</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const TAU = Math.PI*2;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const smooth=t=>t*t*(3-2*t);
+
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(36, innerWidth/innerHeight, 0.1, 200);
+
+const target = new THREE.Vector3(0, 3.4, 0);
+let radius=24, theta=0.62, phi=1.16;
+function applyCam(){
+  camera.position.set(
+    target.x + radius*Math.sin(phi)*Math.sin(theta),
+    target.y + radius*Math.cos(phi),
+    target.z + radius*Math.sin(phi)*Math.cos(theta));
+  camera.lookAt(target);
+}
+applyCam();
+let dragging=false,px=0,py=0;
+renderer.domElement.addEventListener('pointerdown',e=>{dragging=true;px=e.clientX;py=e.clientY;});
+addEventListener('pointerup',()=>dragging=false);
+addEventListener('pointermove',e=>{
+  if(!dragging)return;
+  theta -= (e.clientX-px)*0.005;
+  phi = clamp(phi-(e.clientY-py)*0.005, 0.25, 1.45);
+  px=e.clientX;py=e.clientY; applyCam();
+});
+renderer.domElement.addEventListener('wheel',e=>{
+  e.preventDefault();
+  radius = clamp(radius + e.deltaY*0.02, 13, 42); applyCam();
+},{passive:false});
+
+const hemi = new THREE.HemisphereLight(0xbcd4ff,0x202832,0.0); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffeede, 0.0);
+sun.position.set(14,22,12); sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left=-16;sun.shadow.camera.right=16;
+sun.shadow.camera.top=18;sun.shadow.camera.bottom=-6;
+sun.shadow.camera.near=1;sun.shadow.camera.far=70;
+sun.shadow.bias=-0.0004;
+scene.add(sun);
+
+const FW=11, FD=6, FH=3.2, WALL=0.18;
+const X0=-FW/2, X1=FW/2, Z_BACK=-FD/2, Z_OPEN=FD/2;
+function box(w,h,d,mat){return new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);}
+function sphere(r,mat){return new THREE.Mesh(new THREE.SphereGeometry(r,16,16),mat);}
+function cyl(r,h,mat){return new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,16),mat);}
+function mat(c,opts={}){return new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.85,metalness:.05},opts));}
+function emiss(c,i=1){return new THREE.MeshStandardMaterial({color:0x000000,emissive:c,emissiveIntensity:i,roughness:.4});}
+
+const SPOT = {
+  work:    new THREE.Vector3(-3.3,0,-1.5),
+  kitchen: new THREE.Vector3( 3.4,0,-1.5),
+  social:  new THREE.Vector3(-2.3,0, 1.1),
+  rest:    new THREE.Vector3( 3.3,0, 1.4),
+};
+
+function buildFloor(level, theme){
+  const y = level*FH;
+  const g = new THREE.Group(); g.position.y=y; scene.add(g);
+
+  const shellMat = mat(0xfdf3e6,{roughness:.95});
+  const floorMat = mat(theme.floor,{roughness:theme.floorRough??.9,metalness:theme.floorMetal??0});
+
+  const slab = box(FW+WALL, WALL, FD, floorMat); slab.position.set(0,-WALL/2,0);
+  slab.receiveShadow=true; g.add(slab);
+
+  const trim = box(FW+WALL+0.1, 0.1, 0.15, mat(0xffffff));
+  trim.position.set(0, -WALL/2, Z_OPEN); g.add(trim);
+
+  const ceil = box(FW+WALL, WALL, FD, shellMat); ceil.position.set(0,FH-WALL/2,0); g.add(ceil);
+  const back = box(FW, FH, WALL, mat(theme.wall)); back.position.set(0,FH/2,Z_BACK); back.receiveShadow=true; g.add(back);
+  const left = box(WALL, FH, FD, shellMat); left.position.set(X0,FH/2,0); left.receiveShadow=true; g.add(left);
+  const right= box(WALL, FH, FD, shellMat); right.position.set(X1,FH/2,0); right.receiveShadow=true; g.add(right);
+
+  const partMat = mat(theme.wall, {roughness:.95});
+  const part = box(WALL, FH, 2.4, partMat); part.position.set(0.6,FH/2,Z_BACK+1.2); part.receiveShadow=true; g.add(part);
+
+  const win = box(2.4,1.5,0.05, emiss(theme.window, theme.windowI));
+  win.position.set(-3.2,1.6,Z_BACK+0.07); g.add(win);
+
+  theme.dress(g);
+  theme.light(g);
+  return g;
+}
+
+function makeNPC(color){
+  const grp=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(.15,.22,0.5,16),mat(color,{roughness:.8}));
+  body.position.y=0.25; body.castShadow=true; grp.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.28,32,16),mat(0xffe0bd,{roughness:.6}));
+  head.position.y=0.75; head.castShadow=true; grp.add(head);
+  const handMat=mat(0xffe0bd,{roughness:.6});
+  const lHand=sphere(.08,handMat); lHand.position.set(-0.25, 0.35, 0.1); lHand.castShadow=true; grp.add(lHand);
+  const rHand=sphere(.08,handMat); rHand.position.set(0.25, 0.35, 0.1); rHand.castShadow=true; grp.add(rHand);
+  return grp;
+}
+
+// =================== THEME 01 · THE COZY CAVE (Lazy Tenant) ===================
+const lazy = {
+  wall:0xdbbcfc, floor:0xebdbff, floorRough:.95, window:0x2b3340, windowI:.25,
+  dress(g){
+    const softBlue=mat(0x9bd4ff); const softPink=mat(0xffb5e8); const white=mat(0xffffff);
+    // Big messy bed
+    const bed = box(2.4, 0.4, 2.0, white); bed.position.set(3.4, 0.2, 1.0); bed.castShadow=true; g.add(bed);
+    const blanket = box(2.4, 0.1, 1.4, softBlue); blanket.position.set(3.4, 0.45, 1.3); g.add(blanket);
+    const pillow1 = sphere(0.2, softPink); pillow1.position.set(2.8, 0.5, 0.3); g.add(pillow1);
+    const pillow2 = sphere(0.2, softPink); pillow2.position.set(3.8, 0.5, 0.3); g.add(pillow2);
+    // Big TV & beanbags
+    const tvBase = box(2.0, 0.5, 0.6, white); tvBase.position.set(-3.3, 0.25, -1.4); g.add(tvBase);
+    const tvScreen = box(1.8, 1.0, 0.1, emiss(0x7df9ff, 1.5)); tvScreen.position.set(-3.3, 1.0, -1.3); g.add(tvScreen);
+    const beanbag = sphere(0.6, softPink); beanbag.scale.y=0.6; beanbag.position.set(-2.3, 0.3, 1.1); beanbag.castShadow=true; g.add(beanbag);
+    const beanbag2 = sphere(0.4, softBlue); beanbag2.scale.y=0.6; beanbag2.position.set(-3.3, 0.2, 1.4); g.add(beanbag2);
+    // Pizza boxes/clutter
+    const pizza = box(0.4, 0.05, 0.4, mat(0xffeeb5)); pizza.position.set(-1.0, 0.02, 1.5); pizza.rotation.y=0.4; g.add(pizza);
+    const pizza2 = box(0.4, 0.05, 0.4, mat(0xffeeb5)); pizza2.position.set(-0.9, 0.07, 1.4); pizza2.rotation.y=-0.2; g.add(pizza2);
+  },
+  light(g){
+    const tvGlow=new THREE.PointLight(0x7df9ff,3,7,2); tvGlow.position.set(-3.3,1.0,-0.8); g.add(tvGlow);
+    const fill=new THREE.PointLight(0xdbbcfc,1.5,10,2); fill.position.set(2.0,2.5,1.0); g.add(fill);
+  },
+  schedule(h){ // Sleeps a lot, watches TV, rarely leaves
+    if(h>=0 && h<12) return 'rest';
+    if(h>=12 && h<14) return 'kitchen';
+    if(h>=14 && h<22) return 'social'; // watching TV
+    if(h>=22 && h<24) return 'rest';
+    return 'rest';
+  }
+};
+
+// =================== THEME 02 · THE PRODUCTIVE LOFT (Active Tenant) ===================
+const active = {
+  wall:0xfffae6, floor:0xc4a482, floorRough:.6, window:0xffffff, windowI:.8,
+  dress(g){
+    const wood=mat(0xdbb48c); const yellow=mat(0xffda33); const teal=mat(0x00d98a); const leaf=mat(0x4f7a3a);
+    // Standing Desk
+    const desk = box(2.0, 1.2, 0.8, wood); desk.position.set(-3.3, 0.6, -1.4); desk.castShadow=true; g.add(desk);
+    const laptopBase = box(0.5, 0.05, 0.4, mat(0xdddddd)); laptopBase.position.set(-3.3, 1.22, -1.3); g.add(laptopBase);
+    const laptopScreen = box(0.5, 0.4, 0.05, emiss(0xffffff,1)); laptopScreen.position.set(-3.3, 1.4, -1.5); laptopScreen.rotation.x = -0.2; g.add(laptopScreen);
+    // Yoga/Gym area
+    const yogaMat = box(1.0, 0.02, 2.0, yellow); yogaMat.position.set(-2.3, 0.01, 1.1); g.add(yogaMat);
+    const dumbbell1 = cyl(0.1, 0.4, mat(0x444444)); dumbbell1.position.set(-1.5, 0.05, 0.5); dumbbell1.rotation.x=Math.PI/2; g.add(dumbbell1);
+    const dumbbell2 = cyl(0.1, 0.4, mat(0x444444)); dumbbell2.position.set(-1.5, 0.05, 0.8); dumbbell2.rotation.x=Math.PI/2; g.add(dumbbell2);
+    // Neat Kitchen
+    const counter=box(2.6,0.9,1.0, teal); counter.position.set(3.4,0.45,-1.4); counter.castShadow=true; g.add(counter);
+    const fridge=box(1.0, 2.2, 1.0, mat(0xeeeeee,{metalness:0.4})); fridge.position.set(4.5, 1.1, -1.4); g.add(fridge);
+    // Happy Plants
+    const pot = cyl(0.3, 0.4, mat(0xffffff)); pot.position.set(4.2, 0.2, 1.5); pot.castShadow=true; g.add(pot);
+    const plant = sphere(0.6, leaf); plant.scale.y=1.5; plant.position.set(4.2, 0.8, 1.5); plant.castShadow=true; g.add(plant);
+  },
+  light(g){
+    const amb=new THREE.PointLight(0xfffae6,2.5,11,2); amb.position.set(0,2.8,0.4); g.add(amb);
+    const task=new THREE.PointLight(0xffffff,2,6,2); task.position.set(-3.3,2.5,-1.0); g.add(task);
+  },
+  schedule(h){ // Up early, works out, goes to work, productive
+    if(h>=22 || h<5) return 'rest'; // bed
+    if(h>=5 && h<7)  return 'social'; // yoga mat
+    if(h>=7 && h<8)  return 'kitchen';
+    if(h>=8 && h<17) return 'out'; // at work
+    if(h>=17 && h<19) return 'work'; // at desk
+    if(h>=19 && h<20) return 'kitchen';
+    if(h>=20 && h<22) return 'social'; // yoga/reading
+    return 'rest';
+  }
+};
+
+// =================== THEME 03 · THE PARTY PAD (Party Tenant) ===================
+const party = {
+  wall:0x1a1a24, floor:0x0d0d14, floorRough:.2, floorMetal:.8, window:0x0b0f16, windowI:.0,
+  dress(g){
+    const black=mat(0x111111); const magenta=mat(0xff2bd6); const cyan=mat(0x35e0ff);
+    // DJ Booth & Speakers
+    const djTable = box(2.0, 0.9, 0.8, black); djTable.position.set(-3.3, 0.45, -1.4); g.add(djTable);
+    const deck1 = cyl(0.2, 0.05, cyan); deck1.position.set(-3.7, 0.92, -1.4); g.add(deck1);
+    const deck2 = cyl(0.2, 0.05, magenta); deck2.position.set(-2.9, 0.92, -1.4); g.add(deck2);
+    const speaker1 = box(0.6, 1.2, 0.6, black); speaker1.position.set(-4.5, 0.6, -1.4); g.add(speaker1);
+    const speaker2 = box(0.6, 1.2, 0.6, black); speaker2.position.set(-2.1, 0.6, -1.4); g.add(speaker2);
+    // Neon Dancefloor & Lounge
+    const danceFloor = box(2.5, 0.05, 2.5, emiss(0xff2bd6, 0.5)); danceFloor.position.set(-2.3, 0.02, 1.1); g.add(danceFloor);
+    const sofa1 = box(2.0, 0.6, 0.8, cyan); sofa1.position.set(3.4, 0.3, 1.8); g.add(sofa1);
+    const sofa2 = box(0.8, 0.6, 2.0, cyan); sofa2.position.set(4.0, 0.3, 0.4); g.add(sofa2);
+    // Funky lighting props
+    const neonTube = cyl(0.05, 2.0, emiss(0x35e0ff, 2)); neonTube.rotation.z = Math.PI/4; neonTube.position.set(0, 1.5, Z_BACK+0.2); g.add(neonTube);
+  },
+  light(g){
+    const pink=new THREE.PointLight(0xff2bd6,4,8,2); pink.position.set(-2.3, 2.5, 1.1); g.add(pink);
+    const blue=new THREE.PointLight(0x35e0ff,4,8,2); blue.position.set(3.4, 2.0, 1.0); g.add(blue);
+  },
+  schedule(h){ // Sleeps all day, parties at night
+    if(h>=6 && h<16) return 'rest'; // sleeping through the day
+    if(h>=16 && h<18) return 'kitchen'; // late breakfast
+    if(h>=18 && h<22) return 'work'; // DJing
+    if(h>=22 || h<6) return 'out'; // at the club
+    return 'rest';
+  }
+};
+
+const themes=[lazy, active, party];
+const colors=[0xa87aff, 0x00d98a, 0xff2bd6];
+const floors=[], npcs=[];
+themes.forEach((t,i)=>{
+  buildFloor(i,t);
+  const n=makeNPC(colors[i]); n.position.copy(SPOT.social); n.position.y=i*FH; scene.add(n);
+  npcs.push({grp:n,theme:t,level:i,cur:SPOT.social.clone()});
+});
+
+const base=box(FW+1.2,0.4,FD+1.2,mat(0x9a8f85, {roughness: 0.9}));
+base.position.set(0,-0.22,0); base.receiveShadow=true; scene.add(base);
+
+let hour=6.0, playing=true, speed=2.5;
+const $clock=document.getElementById('clock');
+const $day=document.getElementById('daylabel');
+const sTxt=[document.getElementById('s0'),document.getElementById('s1'),document.getElementById('s2')];
+document.getElementById('speed').addEventListener('input',e=>speed=+e.target.value);
+document.getElementById('play').addEventListener('click',e=>{
+  playing=!playing; e.target.textContent = playing?'⏸ PAUSE':'▶ PLAY';
+});
+
+const STATE_TXT={work:'at the desk/hobby',kitchen:'in the kitchen',social:'in the living space',
+  rest:'resting in bed',out:'away · out of unit'};
+const STATE_TXT_P={work:'DJing',rest:'asleep (daylight)',social:'on the dancefloor'};
+const STATE_TXT_A={work:'at the standing desk',social:'working out on mat'};
+const STATE_TXT_L={social:'watching TV on beanbags',rest:'snoozing'};
+
+function daylight(h){
+  if(h<5||h>=21) return 0;
+  if(h<7)  return smooth((h-5)/2)*0.85;
+  if(h<17) return 0.85+0.15*Math.sin((h-7)/10*Math.PI);
+  if(h<21) return smooth((21-h)/4)*0.85;
+  return 0;
+}
+function phase(h){
+  if(h>=5&&h<8) return 'dawn'; if(h>=8&&h<17) return 'day';
+  if(h>=17&&h<20) return 'dusk'; if(h>=20||h<5) return 'night'; return 'day';
+}
+
+const cNight=new THREE.Color(0x070b14), cDay=new THREE.Color(0x6ca5e8);
+const tmp=new THREE.Vector3();
+
+const clock=new THREE.Clock();
+function tick(){
+  const dt=clock.getDelta();
+  if(playing){ hour=(hour+dt*speed)%24; }
+
+  const dl=daylight(hour);
+  sun.intensity = dl*2.6;
+  sun.color.setHSL(lerp(0.05,0.11,dl), 0.6, 0.55);
+  const ang=(hour/24)*TAU;
+  sun.position.set(Math.cos(ang-1.2)*20, 6+dl*20, 12);
+  hemi.intensity = 0.06+dl*0.5;
+  scene.background = cNight.clone().lerp(cDay,dl);
+  renderer.toneMappingExposure = lerp(0.95,1.12,dl);
+
+  npcs.forEach((n,i)=>{
+    const place=n.theme.schedule(hour);
+    if(place==='out'){ n.grp.visible=false; }
+    else{
+      n.grp.visible=true;
+      tmp.copy(SPOT[place]); tmp.y=n.level*FH;
+      n.cur.lerp(tmp, clamp(dt*2.2,0,1));
+
+      const dist = n.cur.distanceTo(n.grp.position);
+      if (dist > 0.01) {
+          n.grp.position.y = n.cur.y + Math.abs(Math.sin(Date.now() * 0.01)) * 0.1; // Cute bobbing walk
+      } else {
+          n.grp.position.y = n.cur.y;
+      }
+      n.grp.position.x = n.cur.x;
+      n.grp.position.z = n.cur.z;
+    }
+
+    let label = STATE_TXT[place];
+    if(i===2 && STATE_TXT_P[place]) label=STATE_TXT_P[place];
+    if(i===1 && STATE_TXT_A[place]) label=STATE_TXT_A[place];
+    if(i===0 && STATE_TXT_L[place]) label=STATE_TXT_L[place];
+    sTxt[i].textContent = (place==='out'?'— ':'· ')+label;
+  });
+
+  const hh=Math.floor(hour), mm=Math.floor((hour-hh)*60);
+  $clock.innerHTML=`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}<small>LOCAL</small>`;
+  $day.textContent='— '+phase(hour)+' —';
+
+  renderer.render(scene,camera);
+  requestAnimationFrame(tick);
+}
+tick();
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+renderer.setSize(innerWidth,innerHeight);
+</script>

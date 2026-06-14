@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cutaway Diorama — Hollywood</title>
+<style>
+  :root{
+    --accent-top:#35e0ff;     /* Capsule */
+    --accent-mid:#ffb14d;     /* Greenhouse */
+    --accent-bot:#ff7a2f;     /* Workshop */
+    --ink:#e8edf2;
+    --muted:#8a94a3;
+    --panel:rgba(12,16,22,.62);
+    --line:rgba(255,255,255,.10);
+  }
+  html,body{margin:0;height:100%;background:#05070b;overflow:hidden;
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  #app{position:fixed;inset:0}
+  canvas{display:block}
+  /* cinematic framing */
+  #vignette{position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(120% 90% at 50% 42%,transparent 55%,rgba(0,0,0,.55) 100%);
+    mix-blend-mode:multiply}
+  #frameline{position:fixed;inset:18px;pointer-events:none;border:1px solid rgba(255,255,255,.06)}
+
+  .panel{position:fixed;backdrop-filter:blur(9px);background:var(--panel);
+    border:1px solid var(--line);border-radius:10px}
+
+  /* timecode + controls, bottom-left */
+  #hud{left:24px;bottom:24px;padding:14px 16px 12px;min-width:236px}
+  #clock{font-size:34px;font-weight:300;letter-spacing:.06em;line-height:1}
+  #clock small{font-size:12px;color:var(--muted);letter-spacing:.18em;margin-left:8px}
+  #daylabel{font-size:10px;color:var(--muted);letter-spacing:.24em;
+    text-transform:uppercase;margin:8px 0 12px}
+  .ctl{display:flex;align-items:center;gap:10px;margin-top:8px}
+  #play{appearance:none;border:1px solid var(--line);background:transparent;color:var(--ink);
+    font:inherit;font-size:11px;letter-spacing:.14em;padding:6px 12px;border-radius:6px;cursor:pointer}
+  #play:hover{border-color:rgba(255,255,255,.3)}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:2px;background:var(--line);
+    border-radius:2px;flex:1;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;
+    border-radius:50%;background:var(--ink);cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;
+    background:var(--ink);border:none;cursor:pointer}
+  .ctl label{font-size:10px;color:var(--muted);letter-spacing:.16em}
+
+  /* legend, top-left */
+  #legend{left:24px;top:24px;padding:13px 15px}
+  #legend h1{font-size:10px;letter-spacing:.28em;color:var(--muted);
+    text-transform:uppercase;font-weight:500;margin:0 0 12px}
+  .floor{display:grid;grid-template-columns:10px 1fr;gap:10px;align-items:start;margin:11px 0}
+  .swatch{width:10px;height:10px;margin-top:3px;border-radius:2px;box-shadow:0 0 10px currentColor}
+  .floor .name{font-size:12px;letter-spacing:.08em}
+  .floor .state{font-size:10px;color:var(--muted);letter-spacing:.06em;margin-top:2px}
+  .t .swatch,.t .name{color:var(--accent-top)}
+  .m .swatch,.m .name{color:var(--accent-mid)}
+  .b .swatch,.b .name{color:var(--accent-bot)}
+
+  #hint{right:24px;bottom:24px;color:var(--muted);font-size:10px;
+    letter-spacing:.12em;text-align:right;line-height:1.7;pointer-events:none}
+</style>
+
+<div id="app"></div>
+<div id="vignette"></div>
+<div id="frameline"></div>
+
+<div id="legend" class="panel">
+  <h1>The Tenement · cutaway feed</h1>
+  <div class="floor t"><span class="swatch">█</span>
+    <div><div class="name">03 — THE CAPSULE</div><div class="state" id="s2">—</div></div></div>
+  <div class="floor m"><span class="swatch">█</span>
+    <div><div class="name">02 — THE GREENHOUSE</div><div class="state" id="s1">—</div></div></div>
+  <div class="floor b"><span class="swatch">█</span>
+    <div><div class="name">01 — THE WORKSHOP</div><div class="state" id="s0">—</div></div></div>
+</div>
+
+<div id="hud" class="panel">
+  <div id="clock">06:00<small>LOCAL</small></div>
+  <div id="daylabel">— dawn —</div>
+  <div class="ctl"><button id="play">⏸ PAUSE</button>
+    <label>SPD</label><input id="speed" type="range" min="0.2" max="8" step="0.2" value="2.5"></div>
+</div>
+
+<div id="hint" class="panel" style="padding:8px 12px">drag · orbit&nbsp;&nbsp;|&nbsp;&nbsp;scroll · dolly</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const TAU = Math.PI*2;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const smooth=t=>t*t*(3-2*t);
+
+// ---------- renderer / scene / camera ----------
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(36, innerWidth/innerHeight, 0.1, 200);
+
+// ---------- manual locked-orbit camera ----------
+const target = new THREE.Vector3(0, 3.4, 0);
+let radius=24, theta=0.62, phi=1.16;          // default slightly-angled wide shot
+function applyCam(){
+  camera.position.set(
+    target.x + radius*Math.sin(phi)*Math.sin(theta),
+    target.y + radius*Math.cos(phi),
+    target.z + radius*Math.sin(phi)*Math.cos(theta));
+  camera.lookAt(target);
+}
+applyCam();
+let dragging=false,px=0,py=0;
+renderer.domElement.addEventListener('pointerdown',e=>{dragging=true;px=e.clientX;py=e.clientY;});
+addEventListener('pointerup',()=>dragging=false);
+addEventListener('pointermove',e=>{
+  if(!dragging)return;
+  theta -= (e.clientX-px)*0.005;
+  phi = clamp(phi-(e.clientY-py)*0.005, 0.25, 1.45);
+  px=e.clientX;py=e.clientY; applyCam();
+});
+renderer.domElement.addEventListener('wheel',e=>{
+  e.preventDefault();
+  radius = clamp(radius + e.deltaY*0.02, 13, 42); applyCam();
+},{passive:false});
+
+// ---------- global atmosphere lights (driven by clock) ----------
+const hemi = new THREE.HemisphereLight(0xbcd4ff,0x202832,0.0); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffeede, 0.0);
+sun.position.set(14,22,12); sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left=-16;sun.shadow.camera.right=16;
+sun.shadow.camera.top=18;sun.shadow.camera.bottom=-6;
+sun.shadow.camera.near=1;sun.shadow.camera.far=70;
+sun.shadow.bias=-0.0004;
+scene.add(sun);
+
+// ---------- geometry helpers ----------
+const FW=11, FD=6, FH=3.2, WALL=0.18;          // shared footprint + storey height
+const X0=-FW/2, X1=FW/2, Z_BACK=-FD/2, Z_OPEN=FD/2;
+function box(w,h,d,mat){return new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);}
+function mat(c,opts={}){return new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.85,metalness:.05},opts));}
+function emiss(c,i=1){return new THREE.MeshStandardMaterial({color:0x000000,emissive:c,emissiveIntensity:i,roughness:.4});}
+
+// local interior spots (same plan every floor)
+const SPOT = {
+  work:    new THREE.Vector3(-3.3,0,-1.5),
+  kitchen: new THREE.Vector3( 3.4,0,-1.5),
+  social:  new THREE.Vector3(-2.3,0, 1.1),
+  rest:    new THREE.Vector3( 3.3,0, 1.4),
+};
+
+// ---------- build one identical shell + a themed interior ----------
+function buildFloor(level, theme){
+  const y = level*FH;
+  const g = new THREE.Group(); g.position.y=y; scene.add(g);
+
+  // LA-style creamy stucco for the main shell
+  const shellMat = mat(0xfdf3e6,{roughness:.95});
+  const floorMat = mat(theme.floor,{roughness:theme.floorRough??.9,metalness:theme.floorMetal??0});
+
+  const slab = box(FW+WALL, WALL, FD, floorMat); slab.position.set(0,-WALL/2,0);
+  slab.receiveShadow=true; g.add(slab);
+
+  // Hollywood Art Deco Retro Trim on the front
+  const trim = box(FW+WALL+0.1, 0.1, 0.15, mat(0x4db8a1));
+  trim.position.set(0, -WALL/2, Z_OPEN); g.add(trim);
+
+  const ceil = box(FW+WALL, WALL, FD, shellMat); ceil.position.set(0,FH-WALL/2,0); g.add(ceil);
+  const back = box(FW, FH, WALL, shellMat); back.position.set(0,FH/2,Z_BACK); back.receiveShadow=true; g.add(back);
+  const left = box(WALL, FH, FD, shellMat); left.position.set(X0,FH/2,0); left.receiveShadow=true; g.add(left);
+  const right= box(WALL, FH, FD, shellMat); right.position.set(X1,FH/2,0); right.receiveShadow=true; g.add(right);
+
+  // shared half-height partition (painted to match interior theme for contrast)
+  const partMat = mat(theme.wall, {roughness:.95});
+  const part = box(WALL, FH, 2.4, partMat); part.position.set(0.6,FH/2,Z_BACK+1.2); part.receiveShadow=true; g.add(part);
+
+  // shared window cut in back wall (treated differently by light, not geometry)
+  const win = box(2.4,1.5,0.05, emiss(theme.window, theme.windowI));
+  win.position.set(-3.2,1.6,Z_BACK+0.07); g.add(win);
+
+  theme.dress(g);                      // props
+  theme.light(g);                      // practicals
+  return g;
+}
+
+// Cute Chibi Figures
+function makeNPC(color){
+  const grp=new THREE.Group();
+
+  // Chibi Body (short, rounded)
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(.15,.22,0.5,16),mat(color,{roughness:.8}));
+  body.position.y=0.25; body.castShadow=true; grp.add(body);
+
+  // Oversized Head
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.28,32,16),mat(0xffe0bd,{roughness:.6}));
+  head.position.y=0.75; head.castShadow=true; grp.add(head);
+
+  // Little floating hands
+  const handMat=mat(0xffe0bd,{roughness:.6});
+  const lHand=new THREE.Mesh(new THREE.SphereGeometry(.08,12,12),handMat);
+  lHand.position.set(-0.25, 0.35, 0.1); lHand.castShadow=true; grp.add(lHand);
+  const rHand=new THREE.Mesh(new THREE.SphereGeometry(.08,12,12),handMat);
+  rHand.position.set(0.25, 0.35, 0.1); rHand.castShadow=true; grp.add(rHand);
+
+  return grp;
+}
+
+// =================== THEME 01 · THE WORKSHOP ===================
+const workshop = {
+  wall:0x6f6a63, floor:0x4a4640, floorRough:.95, window:0x2b3340, windowI:.25,
+  dress(g){
+    const wood=mat(0x6b4a2f), steel=mat(0x9aa0a6,{metalness:.6,roughness:.4});
+    const bench=box(2.8,0.9,1.0,wood); bench.position.set(-3.3,0.45,-1.4); bench.castShadow=bench.receiveShadow=true; g.add(bench);
+    const board=box(2.6,1.4,0.08,mat(0x554f47)); board.position.set(-3.3,2.0,Z_BACK+0.15); g.add(board);
+    for(let i=0;i<6;i++){const t=box(0.07,0.4,0.07,steel);t.position.set(-4.3+i*0.4,2.0,Z_BACK+0.22);t.castShadow=true;g.add(t);}
+    const crate=box(0.8,0.8,0.8,mat(0xb5651d)); crate.position.set(2.6,0.4,1.4); crate.castShadow=true; g.add(crate);
+    const stool=box(0.5,0.5,0.5,steel); stool.position.set(-2.0,0.25,-0.4); stool.castShadow=true; g.add(stool);
+    const bulb=new THREE.Mesh(new THREE.SphereGeometry(.09,10,8),emiss(0xfff4e0,3)); bulb.position.set(-3.3,2.6,-1.3); g.add(bulb);
+  },
+  light(g){
+    const fill=new THREE.PointLight(0xbcd0e6,2.2,9,2); fill.position.set(0,2.7,0.6); g.add(fill);
+    const task=new THREE.SpotLight(0xffffff,9,8,0.5,0.45,1.4);
+    task.position.set(-3.3,2.9,-1.0); task.target.position.set(-3.3,0.6,-1.4);
+    task.castShadow=true; task.shadow.mapSize.set(1024,1024); task.shadow.bias=-0.0008;
+    g.add(task,task.target);
+  },
+  schedule(h){ // irregular bursts
+    if(h>=23||h<6) return 'rest';
+    if(h>=6 && h<9)  return 'work';
+    if(h>=9 && h<12) return 'out';
+    if(h>=12 && h<13) return 'rest';
+    if(h>=19 && h<20) return 'kitchen';
+    return 'work';
+  }
+};
+
+// =================== THEME 02 · THE GREENHOUSE ===================
+const greenhouse = {
+  wall:0x8a7a5e, floor:0x7a5638, floorRough:.7, window:0xffd9a0, windowI:.9,
+  dress(g){
+    const terra=mat(0xb5623a,{roughness:.8}), leaf=mat(0x4f7a3a,{roughness:.9});
+    function plant(x,z,s){const pot=box(0.4*s,0.4*s,0.4*s,terra);pot.position.set(x,0.2*s,z);pot.castShadow=true;g.add(pot);
+      const f=new THREE.Mesh(new THREE.SphereGeometry(0.42*s,10,8),leaf);f.position.set(x,0.6*s,z);f.scale.y=1.4;f.castShadow=true;g.add(f);}
+    plant(-2.3,1.1,1.2);plant(-1.2,1.6,0.8);plant(4.2,1.0,1.0);plant(4.4,-2.2,0.7);plant(-4.4,-2.2,0.9);
+    const moss=new THREE.Mesh(new THREE.CylinderGeometry(.16,.16,2.8,8),leaf); moss.position.set(0.6,1.4,Z_BACK+1.2); g.add(moss);
+    const rug=box(3.2,0.04,2.2,mat(0x9a5b53)); rug.position.set(-2.0,0.02,0.8); rug.receiveShadow=true; g.add(rug);
+    const chair=box(1.0,0.9,1.0,mat(0x8a6f4f)); chair.position.set(-2.3,0.45,1.1); chair.castShadow=true; g.add(chair);
+    const counter=box(2.6,0.9,1.0,mat(0x7d6448)); counter.position.set(3.4,0.45,-1.4); counter.castShadow=true; g.add(counter);
+    const shade=new THREE.Mesh(new THREE.ConeGeometry(.45,.5,16),emiss(0xffcaa0,2)); shade.position.set(-2.3,2.3,1.1); g.add(shade);
+  },
+  light(g){
+    const amb=new THREE.PointLight(0xffd9a0,2.4,11,2); amb.position.set(0,2.8,0.4); g.add(amb);
+    const lamp=new THREE.PointLight(0xffb14d,5,6,2); lamp.position.set(-2.3,2.1,1.1); lamp.castShadow=true;
+    lamp.shadow.mapSize.set(1024,1024); lamp.shadow.bias=-0.001; g.add(lamp);
+    const winglow=new THREE.PointLight(0xffe2b0,3,7,2); winglow.position.set(-3.2,1.6,Z_BACK+0.5); g.add(winglow);
+  },
+  schedule(h){ // gentle, ritualistic homebody
+    if(h>=21||h<7) return 'rest';
+    if(h>=7 && h<9)  return 'kitchen';
+    if(h>=9 && h<12) return 'social';
+    if(h>=12 && h<13) return 'kitchen';
+    if(h>=13 && h<16) return 'out';
+    if(h>=17 && h<19) return 'kitchen';
+    return 'social';
+  }
+};
+
+// =================== THEME 03 · THE CAPSULE ===================
+const capsule = {
+  wall:0xe8ebef, floor:0x14171c, floorRough:.25, floorMetal:.4, window:0x0b0f16, windowI:.0,
+  dress(g){
+    const desk=box(2.8,0.08,0.9,mat(0x101319,{roughness:.4})); desk.position.set(-3.3,0.95,-1.4); desk.castShadow=true; g.add(desk);
+    const legs=mat(0x202833,{metalness:.5,roughness:.4});
+    [[-4.5,-1.0],[-2.1,-1.0]].forEach(p=>{const l=box(0.08,0.95,0.08,legs);l.position.set(p[0],0.47,p[1]);g.add(l);});
+    const m1=box(1.1,0.62,0.05,emiss(0x35e0ff,1.4)); m1.position.set(-3.7,1.55,-1.7); g.add(m1);
+    const m2=box(1.1,0.62,0.05,emiss(0xff2bd6,1.2)); m2.position.set(-2.5,1.55,-1.7); g.add(m2);
+    const chair=box(0.7,1.1,0.7,mat(0x0c0e12,{roughness:.5})); chair.position.set(-3.3,0.55,-0.7); chair.castShadow=true; g.add(chair);
+    // led skirting strips
+    const s1=box(FW-0.5,0.05,0.05,emiss(0x35e0ff,2)); s1.position.set(0,0.06,Z_OPEN-0.2); g.add(s1);
+    const s2=box(0.05,0.05,FD-0.5,emiss(0xff2bd6,2)); s2.position.set(X0+0.25,0.06,0); g.add(s2);
+    const bed=box(2.0,0.3,1.4,mat(0x1a1e25)); bed.position.set(3.3,0.15,1.4); bed.castShadow=true; g.add(bed);
+  },
+  light(g){
+    const amb=new THREE.PointLight(0x2a3550,0.7,12,2); amb.position.set(0,2.8,0); g.add(amb);
+    const cyan=new THREE.PointLight(0x35e0ff,3.2,6,2); cyan.position.set(-3.4,1.6,-0.9); g.add(cyan);
+    const mag=new THREE.PointLight(0xff2bd6,2.4,6,2);  mag.position.set(-2.6,1.4,-0.9); g.add(mag);
+  },
+  schedule(h){ // inverted night-owl
+    if(h>=2 && h<6)  return 'work';
+    if(h>=6 && h<8)  return 'kitchen';
+    if(h>=8 && h<14) return 'rest';
+    if(h>=14 && h<16) return 'out';
+    return 'work';
+  }
+};
+
+const themes=[workshop,greenhouse,capsule];
+const colors=[0xff7a2f,0xffb14d,0x35e0ff];
+const floors=[], npcs=[];
+themes.forEach((t,i)=>{
+  buildFloor(i,t);
+  const n=makeNPC(colors[i]); n.position.copy(SPOT.social); n.position.y=i*FH; scene.add(n);
+  npcs.push({grp:n,theme:t,level:i,cur:SPOT.social.clone()});
+});
+
+// Warm terracotta concrete base for the LA vibe
+const base=box(FW+1.2,0.4,FD+1.2,mat(0xd6a185, {roughness: 0.9}));
+base.position.set(0,-0.22,0); base.receiveShadow=true; scene.add(base);
+
+// ---------- clock + day/night ----------
+let hour=6.0, playing=true, speed=2.5;          // speed = hours per real second
+const $clock=document.getElementById('clock');
+const $day=document.getElementById('daylabel');
+const sTxt=[document.getElementById('s0'),document.getElementById('s1'),document.getElementById('s2')];
+document.getElementById('speed').addEventListener('input',e=>speed=+e.target.value);
+document.getElementById('play').addEventListener('click',e=>{
+  playing=!playing; e.target.textContent = playing?'⏸ PAUSE':'▶ PLAY';
+});
+const STATE_TXT={work:'at the bench',kitchen:'in the kitchen',social:'in the living space',
+  rest:'resting',out:'away · out of unit'};
+const STATE_TXT_C={work:'at the desk',rest:'asleep (daylight)'}; // capsule overrides
+
+function daylight(h){ // 0 night .. 1 noon
+  if(h<5||h>=21) return 0;
+  if(h<7)  return smooth((h-5)/2)*0.85;
+  if(h<17) return 0.85+0.15*Math.sin((h-7)/10*Math.PI);
+  if(h<21) return smooth((21-h)/4)*0.85;
+  return 0;
+}
+function phase(h){
+  if(h>=5&&h<8) return 'dawn'; if(h>=8&&h<17) return 'day';
+  if(h>=17&&h<20) return 'dusk'; if(h>=20||h<5) return 'night'; return 'day';
+}
+
+const cNight=new THREE.Color(0x070b14), cDay=new THREE.Color(0x6ca5e8); // bluer LA sky
+const tmp=new THREE.Vector3();
+
+const clock=new THREE.Clock();
+function tick(){
+  const dt=clock.getDelta();
+  if(playing){ hour=(hour+dt*speed)%24; }
+
+  const dl=daylight(hour);
+  sun.intensity = dl*2.6;
+  // Adjusted for warmer golden California light
+  sun.color.setHSL(lerp(0.05,0.11,dl), 0.6, 0.55);
+  const ang=(hour/24)*TAU;
+  sun.position.set(Math.cos(ang-1.2)*20, 6+dl*20, 12);
+  hemi.intensity = 0.06+dl*0.5;
+  scene.background = cNight.clone().lerp(cDay,dl);
+  renderer.toneMappingExposure = lerp(0.95,1.12,dl);
+
+  // npc FSM
+  npcs.forEach((n,i)=>{
+    const place=n.theme.schedule(hour);
+    if(place==='out'){ n.grp.visible=false; }
+    else{
+      n.grp.visible=true;
+      tmp.copy(SPOT[place]); tmp.y=n.level*FH;
+      n.cur.lerp(tmp, clamp(dt*2.2,0,1));        // walk toward target
+
+      // Add a slight bobbing motion when they move
+      const dist = n.cur.distanceTo(n.grp.position);
+      if (dist > 0.01) {
+          n.grp.position.y = n.cur.y + Math.abs(Math.sin(Date.now() * 0.01)) * 0.1;
+      } else {
+          n.grp.position.y = n.cur.y;
+      }
+
+      n.grp.position.x = n.cur.x;
+      n.grp.position.z = n.cur.z;
+    }
+    let label = STATE_TXT[place];
+    if(i===2 && STATE_TXT_C[place]) label=STATE_TXT_C[place];
+    sTxt[i].textContent = (place==='out'?'— ':'· ')+label;
+  });
+
+  // hud
+  const hh=Math.floor(hour), mm=Math.floor((hour-hh)*60);
+  $clock.innerHTML=`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}<small>LOCAL</small>`;
+  $day.textContent='— '+phase(hour)+' —';
+
+  renderer.render(scene,camera);
+  requestAnimationFrame(tick);
+}
+tick();
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+renderer.setSize(innerWidth,innerHeight);
+</script>
