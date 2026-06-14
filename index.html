@@ -1,454 +1,386 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>The Younger Baobab — A Living Lineage</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cutaway Diorama — Dollhouse</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Manrope:wght@400;600;800&display=swap');
+  :root{
+    --accent-top:#ff2bd6;     /* Party */
+    --accent-mid:#00d98a;     /* Active */
+    --accent-bot:#a87aff;     /* Lazy */
+    --ink:#e8edf2;
+    --muted:#8a94a3;
+    --panel:rgba(12,16,22,.62);
+    --line:rgba(255,255,255,.10);
+  }
+  html,body{margin:0;height:100%;background:#05070b;overflow:hidden;
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  #app{position:fixed;inset:0}
+  canvas{display:block}
+  #vignette{position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(120% 90% at 50% 42%,transparent 55%,rgba(0,0,0,.55) 100%);
+    mix-blend-mode:multiply}
+  #frameline{position:fixed;inset:18px;pointer-events:none;border:1px solid rgba(255,255,255,.06)}
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { height: 100%; overflow: hidden; background: #14101f; }
-  #scene { position: fixed; inset: 0; }
+  .panel{position:fixed;backdrop-filter:blur(9px);background:var(--panel);
+    border:1px solid var(--line);border-radius:10px}
 
-  /* ---------- title ---------- */
-  .title {
-    position: fixed; top: 34px; left: 40px; z-index: 5; pointer-events: none;
-  }
-  .title h1 {
-    font-family: 'Cormorant Garamond', serif; font-weight: 600;
-    font-size: clamp(26px, 3.4vw, 44px); color: #EAD9B0; letter-spacing: .04em;
-  }
-  .title p {
-    font-family: Manrope, sans-serif; font-size: 11px; letter-spacing: .42em;
-    color: #B98C5A; margin-top: 6px;
-  }
+  #hud{left:24px;bottom:24px;padding:14px 16px 12px;min-width:236px}
+  #clock{font-size:34px;font-weight:300;letter-spacing:.06em;line-height:1}
+  #clock small{font-size:12px;color:var(--muted);letter-spacing:.18em;margin-left:8px}
+  #daylabel{font-size:10px;color:var(--muted);letter-spacing:.24em;
+    text-transform:uppercase;margin:8px 0 12px}
+  .ctl{display:flex;align-items:center;gap:10px;margin-top:8px}
+  #play{appearance:none;border:1px solid var(--line);background:transparent;color:var(--ink);
+    font:inherit;font-size:11px;letter-spacing:.14em;padding:6px 12px;border-radius:6px;cursor:pointer}
+  #play:hover{border-color:rgba(255,255,255,.3)}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:2px;background:var(--line);
+    border-radius:2px;flex:1;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;
+    border-radius:50%;background:var(--ink);cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;
+    background:var(--ink);border:none;cursor:pointer}
+  .ctl label{font-size:10px;color:var(--muted);letter-spacing:.16em}
 
-  .hint {
-    position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);
-    font-family: Manrope, sans-serif; font-size: 11px; letter-spacing: .3em;
-    color: #6e6386; z-index: 5; pointer-events: none;
-  }
+  #legend{left:24px;top:24px;padding:13px 15px}
+  #legend h1{font-size:10px;letter-spacing:.28em;color:var(--muted);
+    text-transform:uppercase;font-weight:500;margin:0 0 12px}
+  .floor{display:grid;grid-template-columns:10px 1fr;gap:10px;align-items:start;margin:11px 0}
+  .swatch{width:10px;height:10px;margin-top:3px;border-radius:2px;box-shadow:0 0 10px currentColor}
+  .floor .name{font-size:12px;letter-spacing:.08em}
+  .floor .state{font-size:10px;color:var(--muted);letter-spacing:.06em;margin-top:2px}
+  .t .swatch,.t .name{color:var(--accent-top)}
+  .m .swatch,.m .name{color:var(--accent-mid)}
+  .b .swatch,.b .name{color:var(--accent-bot)}
 
-  /* ---------- glass card ---------- */
-  .card {
-    position: fixed; top: 50%; right: -380px; transform: translateY(-50%);
-    width: 320px; z-index: 10; padding: 26px 28px;
-    border-radius: 18px;
-    background: rgba(34, 26, 50, 0.42);
-    backdrop-filter: blur(18px) saturate(140%);
-    -webkit-backdrop-filter: blur(18px) saturate(140%);
-    border: 1px solid rgba(234, 217, 176, 0.22);
-    box-shadow: 0 30px 80px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.12);
-    pointer-events: none;
-  }
-  .card .gen {
-    font-family: Manrope, sans-serif; font-size: 10px; letter-spacing: .38em;
-    color: #B98C5A; text-transform: uppercase;
-  }
-  .card h2 {
-    font-family: 'Cormorant Garamond', serif; font-weight: 600;
-    font-size: 30px; color: #F4E9CE; margin-top: 8px; line-height: 1.05;
-  }
-  .card .dates {
-    font-family: Manrope, sans-serif; font-size: 13px; color: #CBB7E0;
-    margin-top: 10px; letter-spacing: .08em;
-  }
-  .card .loc {
-    font-family: Manrope, sans-serif; font-size: 11px; color: #8d7fae;
-    margin-top: 14px; letter-spacing: .18em; text-transform: uppercase;
-  }
-  .card .vein {
-    height: 2px; width: 46px; margin-top: 16px; border-radius: 2px;
-    background: linear-gradient(90deg, #46C8FF, transparent);
-    box-shadow: 0 0 12px #46C8FF88;
-  }
-
-  /* ---------- ripple ---------- */
-  .ripple {
-    position: fixed; border-radius: 50%; pointer-events: none; z-index: 2;
-    border: 1px solid rgba(70, 200, 255, 0.5);
-    transform: translate(-50%, -50%) scale(0);
-  }
+  #hint{right:24px;bottom:24px;color:var(--muted);font-size:10px;
+    letter-spacing:.12em;text-align:right;line-height:1.7;pointer-events:none}
 </style>
-</head>
-<body>
-<div id="scene"></div>
 
-<div class="title">
-  <h1>The Younger Baobab</h1>
-  <p>ROOTS · TRUNK · CANOPY — A LIVING LINEAGE</p>
-</div>
-<div class="hint">MOVE TO SWAY THE TREE · HOVER A LIGHT TO MEET AN ANCESTOR</div>
+<div id="app"></div>
+<div id="vignette"></div>
+<div id="frameline"></div>
 
-<div class="card" id="card">
-  <div class="gen" id="cardGen">GENERATION</div>
-  <h2 id="cardName">Name</h2>
-  <div class="dates" id="cardDates">0000–0000</div>
-  <div class="loc" id="cardLoc">Location to be added</div>
-  <div class="vein"></div>
+<div id="legend" class="panel">
+  <h1>The Tenement · Dollhouse</h1>
+  <div class="floor t"><span class="swatch">█</span>
+    <div><div class="name">03 — THE PARTY PAD</div><div class="state" id="s2">—</div></div></div>
+  <div class="floor m"><span class="swatch">█</span>
+    <div><div class="name">02 — THE PRODUCTIVE LOFT</div><div class="state" id="s1">—</div></div></div>
+  <div class="floor b"><span class="swatch">█</span>
+    <div><div class="name">01 — THE COZY CAVE</div><div class="state" id="s0">—</div></div></div>
 </div>
+
+<div id="hud" class="panel">
+  <div id="clock">06:00<small>LOCAL</small></div>
+  <div id="daylabel">— dawn —</div>
+  <div class="ctl"><button id="play">⏸ PAUSE</button>
+    <label>SPD</label><input id="speed" type="range" min="0.2" max="8" step="0.2" value="2.5"></div>
+</div>
+
+<div id="hint" class="panel" style="padding:8px 12px">drag · orbit&nbsp;&nbsp;|&nbsp;&nbsp;scroll · dolly</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script>
-/* ================= FAMILY DATA ================= */
-const FAMILY = [
-  { gen: "Root · Early Ancestors", name: "Thomas Younger I", dates: "1761–1834", zone: "root", slot: 0 },
-  { gen: "Root · Early Ancestors", name: "Mary (Nall)", dates: "1768–1864", zone: "root", slot: 1 },
-  { gen: "4th Great-Grandparents", name: "Alexander Younger", dates: "1787–1866", zone: "root", slot: 2 },
-  { gen: "4th Great-Grandparents", name: "C.", dates: "1780–1870", zone: "root", slot: 3 },
-  { gen: "3rd Great-Grandparents · The Convergence", name: "Frank Younger", dates: "1820–1907", zone: "trunk", slot: 0 },
-  { gen: "3rd Great-Grandparents · The Convergence", name: "Angeline Younger", dates: "1844–Unknown", zone: "trunk", slot: 1 },
-  { gen: "2nd Great-Grandparents", name: "Lonnie Lee Younger", dates: "1871–1934", zone: "branchLow", slot: 0 },
-  { gen: "2nd Great-Grandparents", name: "Rachel Arie Sneed", dates: "1877–1956", zone: "branchLow", slot: 1 },
-  { gen: "2nd Great-Grandparents", name: "Turner Brown", dates: "1885–Unknown", zone: "branchLow", slot: 2 },
-  { gen: "2nd Great-Grandparents", name: "Lula Corbin", dates: "1886–Unknown", zone: "branchLow", slot: 3 },
-  { gen: "2nd Great-Grandparents", name: "Alodis Bagby", dates: "1900–1934", zone: "branchLow", slot: 4 },
-  { gen: "2nd Great-Grandparents", name: "Sadie Bagby", dates: "1905–1988", zone: "branchLow", slot: 5 },
-  { gen: "Great-Grandparents", name: "Ralleigh Younger", dates: "1898–1937", zone: "branchMid", slot: 0 },
-  { gen: "Great-Grandparents", name: "Bessie Brown", dates: "1903–1983", zone: "branchMid", slot: 1 },
-  { gen: "Great-Grandparents", name: "King S Jones", dates: "1914–1959", zone: "branchMid", slot: 2 },
-  { gen: "Great-Grandparents", name: "Pellige Nicholson", dates: "1917–1997", zone: "branchMid", slot: 3 },
-  { gen: "Great-Grandparents", name: "Edgar Thompson", dates: "1923–1990", zone: "branchMid", slot: 4 },
-  { gen: "Great-Grandparents", name: "Barbara J Bagby", dates: "1928–2014", zone: "branchMid", slot: 5 },
-  { gen: "Grandparents", name: "Lee Younger", dates: "1935–1980", zone: "branchHigh", slot: 0 },
-  { gen: "Grandparents", name: "Willetta L Younger", dates: "1937–2010", zone: "branchHigh", slot: 1 },
-  { gen: "Grandparents", name: "William Tucker", dates: "Living", zone: "branchHigh", slot: 2 },
-  { gen: "Grandparents", name: "Beverly Thompson", dates: "1949–2016", zone: "branchHigh", slot: 3 },
-  { gen: "Parents & Relatives", name: "Lee Edward Younger", dates: "Living", zone: "crownRing", slot: 0 },
-  { gen: "Parent", name: "Lee Younger", dates: "1972–Living", zone: "crownRing", slot: 1 },
-  { gen: "Parent", name: "Michquelin Tucker", dates: "1972–Living", zone: "crownRing", slot: 2 },
-  { gen: "Self", name: "Lee Younger", dates: "1991–Living", zone: "crown", slot: 0 },
-];
+const TAU = Math.PI*2;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const smooth=t=>t*t*(3-2*t);
 
-/* ================= SCENE ================= */
-const container = document.getElementById("scene");
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x14101f);            // deep indigo void
-scene.fog = new THREE.FogExp2(0x14101f, 0.028);
-
-const camera = new THREE.PerspectiveCamera(46, innerWidth / innerHeight, 0.1, 200);
-camera.position.set(0, 7.5, 30);
-
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-container.appendChild(renderer.domElement);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+app.appendChild(renderer.domElement);
 
-/* ---------- lighting: moody + overhead spot ---------- */
-scene.add(new THREE.AmbientLight(0x4a3a55, 0.55));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(36, innerWidth/innerHeight, 0.1, 200);
 
-const spot = new THREE.SpotLight(0xffe2b0, 1.25, 90, Math.PI / 5, 0.45, 1.2);
-spot.position.set(6, 34, 10);
-spot.castShadow = true;
-spot.shadow.mapSize.set(2048, 2048);
-scene.add(spot);
-scene.add(spot.target);
+const target = new THREE.Vector3(0, 3.4, 0);
+let radius=24, theta=0.62, phi=1.16;
+function applyCam(){
+  camera.position.set(
+    target.x + radius*Math.sin(phi)*Math.sin(theta),
+    target.y + radius*Math.cos(phi),
+    target.z + radius*Math.sin(phi)*Math.cos(theta));
+  camera.lookAt(target);
+}
+applyCam();
+let dragging=false,px=0,py=0;
+renderer.domElement.addEventListener('pointerdown',e=>{dragging=true;px=e.clientX;py=e.clientY;});
+addEventListener('pointerup',()=>dragging=false);
+addEventListener('pointermove',e=>{
+  if(!dragging)return;
+  theta -= (e.clientX-px)*0.005;
+  phi = clamp(phi-(e.clientY-py)*0.005, 0.25, 1.45);
+  px=e.clientX;py=e.clientY; applyCam();
+});
+renderer.domElement.addEventListener('wheel',e=>{
+  e.preventDefault();
+  radius = clamp(radius + e.deltaY*0.02, 13, 42); applyCam();
+},{passive:false});
 
-const rim = new THREE.DirectionalLight(0xb0316e, 0.35);  // terracotta-magenta rim
-rim.position.set(-14, 8, -10);
-scene.add(rim);
+const hemi = new THREE.HemisphereLight(0xbcd4ff,0x202832,0.0); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffeede, 0.0);
+sun.position.set(14,22,12); sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left=-16;sun.shadow.camera.right=16;
+sun.shadow.camera.top=18;sun.shadow.camera.bottom=-6;
+sun.shadow.camera.near=1;sun.shadow.camera.far=70;
+sun.shadow.bias=-0.0004;
+scene.add(sun);
 
-const groundGlow = new THREE.PointLight(0x46c8ff, 0.5, 18);
-groundGlow.position.set(0, -2.5, 0);
-scene.add(groundGlow);
+const FW=11, FD=6, FH=3.2, WALL=0.18;
+const X0=-FW/2, X1=FW/2, Z_BACK=-FD/2, Z_OPEN=FD/2;
+function box(w,h,d,mat){return new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);}
+function sphere(r,mat){return new THREE.Mesh(new THREE.SphereGeometry(r,16,16),mat);}
+function cyl(r,h,mat){return new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,16),mat);}
+function mat(c,opts={}){return new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.85,metalness:.05},opts));}
+function emiss(c,i=1){return new THREE.MeshStandardMaterial({color:0x000000,emissive:c,emissiveIntensity:i,roughness:.4});}
 
-/* ---------- ground ---------- */
-const ground = new THREE.Mesh(
-  new THREE.CircleGeometry(60, 48),
-  new THREE.MeshStandardMaterial({ color: 0x1b1426, roughness: 1 })
-);
-ground.rotation.x = -Math.PI / 2;
-ground.receiveShadow = true;
-scene.add(ground);
+const SPOT = {
+  work:    new THREE.Vector3(-3.3,0,-1.5),
+  kitchen: new THREE.Vector3( 3.4,0,-1.5),
+  social:  new THREE.Vector3(-2.3,0, 1.1),
+  rest:    new THREE.Vector3( 3.3,0, 1.4),
+};
 
-/* ================= TREE GROUP ================= */
-const tree = new THREE.Group();
-scene.add(tree);
+function buildFloor(level, theme){
+  const y = level*FH;
+  const g = new THREE.Group(); g.position.y=y; scene.add(g);
 
-const barkMat = new THREE.MeshStandardMaterial({ color: 0x5a4030, roughness: 0.92, metalness: 0.05 });
-const rootMat = new THREE.MeshStandardMaterial({ color: 0x4a3326, roughness: 0.95 });
+  const shellMat = mat(0xfdf3e6,{roughness:.95});
+  const floorMat = mat(theme.floor,{roughness:theme.floorRough??.9,metalness:theme.floorMetal??0});
 
-/* displaced, organic trunk */
-function makeTrunk() {
-  const geo = new THREE.CylinderGeometry(1.5, 3.1, 11, 24, 18, true);
-  const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-    const n = Math.sin(y * 1.7 + x * 2.3) * 0.16 + Math.cos(z * 2.6 + y) * 0.13;
-    const r = 1 + n;
-    pos.setX(i, x * r);
-    pos.setZ(i, z * r);
+  const slab = box(FW+WALL, WALL, FD, floorMat); slab.position.set(0,-WALL/2,0);
+  slab.receiveShadow=true; g.add(slab);
+
+  const trim = box(FW+WALL+0.1, 0.1, 0.15, mat(0xffffff));
+  trim.position.set(0, -WALL/2, Z_OPEN); g.add(trim);
+
+  const ceil = box(FW+WALL, WALL, FD, shellMat); ceil.position.set(0,FH-WALL/2,0); g.add(ceil);
+  const back = box(FW, FH, WALL, mat(theme.wall)); back.position.set(0,FH/2,Z_BACK); back.receiveShadow=true; g.add(back);
+  const left = box(WALL, FH, FD, shellMat); left.position.set(X0,FH/2,0); left.receiveShadow=true; g.add(left);
+  const right= box(WALL, FH, FD, shellMat); right.position.set(X1,FH/2,0); right.receiveShadow=true; g.add(right);
+
+  const partMat = mat(theme.wall, {roughness:.95});
+  const part = box(WALL, FH, 2.4, partMat); part.position.set(0.6,FH/2,Z_BACK+1.2); part.receiveShadow=true; g.add(part);
+
+  const win = box(2.4,1.5,0.05, emiss(theme.window, theme.windowI));
+  win.position.set(-3.2,1.6,Z_BACK+0.07); g.add(win);
+
+  theme.dress(g);
+  theme.light(g);
+  return g;
+}
+
+function makeNPC(color){
+  const grp=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(.15,.22,0.5,16),mat(color,{roughness:.8}));
+  body.position.y=0.25; body.castShadow=true; grp.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.28,32,16),mat(0xffe0bd,{roughness:.6}));
+  head.position.y=0.75; head.castShadow=true; grp.add(head);
+  const handMat=mat(0xffe0bd,{roughness:.6});
+  const lHand=sphere(.08,handMat); lHand.position.set(-0.25, 0.35, 0.1); lHand.castShadow=true; grp.add(lHand);
+  const rHand=sphere(.08,handMat); rHand.position.set(0.25, 0.35, 0.1); rHand.castShadow=true; grp.add(rHand);
+  return grp;
+}
+
+// =================== THEME 01 · THE COZY CAVE (Lazy Tenant) ===================
+const lazy = {
+  wall:0xdbbcfc, floor:0xebdbff, floorRough:.95, window:0x2b3340, windowI:.25,
+  dress(g){
+    const softBlue=mat(0x9bd4ff); const softPink=mat(0xffb5e8); const white=mat(0xffffff);
+    // Big messy bed
+    const bed = box(2.4, 0.4, 2.0, white); bed.position.set(3.4, 0.2, 1.0); bed.castShadow=true; g.add(bed);
+    const blanket = box(2.4, 0.1, 1.4, softBlue); blanket.position.set(3.4, 0.45, 1.3); g.add(blanket);
+    const pillow1 = sphere(0.2, softPink); pillow1.position.set(2.8, 0.5, 0.3); g.add(pillow1);
+    const pillow2 = sphere(0.2, softPink); pillow2.position.set(3.8, 0.5, 0.3); g.add(pillow2);
+    // Big TV & beanbags
+    const tvBase = box(2.0, 0.5, 0.6, white); tvBase.position.set(-3.3, 0.25, -1.4); g.add(tvBase);
+    const tvScreen = box(1.8, 1.0, 0.1, emiss(0x7df9ff, 1.5)); tvScreen.position.set(-3.3, 1.0, -1.3); g.add(tvScreen);
+    const beanbag = sphere(0.6, softPink); beanbag.scale.y=0.6; beanbag.position.set(-2.3, 0.3, 1.1); beanbag.castShadow=true; g.add(beanbag);
+    const beanbag2 = sphere(0.4, softBlue); beanbag2.scale.y=0.6; beanbag2.position.set(-3.3, 0.2, 1.4); g.add(beanbag2);
+    // Pizza boxes/clutter
+    const pizza = box(0.4, 0.05, 0.4, mat(0xffeeb5)); pizza.position.set(-1.0, 0.02, 1.5); pizza.rotation.y=0.4; g.add(pizza);
+    const pizza2 = box(0.4, 0.05, 0.4, mat(0xffeeb5)); pizza2.position.set(-0.9, 0.07, 1.4); pizza2.rotation.y=-0.2; g.add(pizza2);
+  },
+  light(g){
+    const tvGlow=new THREE.PointLight(0x7df9ff,3,7,2); tvGlow.position.set(-3.3,1.0,-0.8); g.add(tvGlow);
+    const fill=new THREE.PointLight(0xdbbcfc,1.5,10,2); fill.position.set(2.0,2.5,1.0); g.add(fill);
+  },
+  schedule(h){ // Sleeps a lot, watches TV, rarely leaves
+    if(h>=0 && h<12) return 'rest';
+    if(h>=12 && h<14) return 'kitchen';
+    if(h>=14 && h<22) return 'social'; // watching TV
+    if(h>=22 && h<24) return 'rest';
+    return 'rest';
   }
-  geo.computeVertexNormals();
-  const trunk = new THREE.Mesh(geo, barkMat);
-  trunk.position.y = 5.5;
-  trunk.castShadow = true;
-  return trunk;
-}
-const trunk = makeTrunk();
-tree.add(trunk);
+};
 
-/* curves: stored so energy pulses can ride them */
-const veinCurves = [];
-
-function tube(points, r0, mat, taper = true) {
-  const curve = new THREE.CatmullRomCurve3(points);
-  const geo = new THREE.TubeGeometry(curve, 32, r0, 8, false);
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.castShadow = true;
-  veinCurves.push(curve);
-  return mesh;
-}
-
-/* ---------- roots (paternal line, digging into earth) ---------- */
-const rootTips = [];
-for (let i = 0; i < 6; i++) {
-  const a = (i / 6) * Math.PI * 2 + 0.4;
-  const reach = 6.5 + (i % 3) * 1.6;
-  const tip = new THREE.Vector3(Math.cos(a) * reach, -3.4 - (i % 2) * 1.3, Math.sin(a) * reach);
-  const pts = [
-    new THREE.Vector3(Math.cos(a) * 1.6, 0.6, Math.sin(a) * 1.6),
-    new THREE.Vector3(Math.cos(a) * 3.4, -0.9, Math.sin(a) * 3.4),
-    new THREE.Vector3(Math.cos(a) * (reach * 0.75), -2.2, Math.sin(a) * (reach * 0.75)),
-    tip,
-  ];
-  tree.add(tube(pts, 0.42 - (i % 3) * 0.07, rootMat));
-  rootTips.push(tip);
-}
-
-/* ---------- branches (the legacy, reaching wide) ---------- */
-const branchAnchors = { branchLow: [], branchMid: [], branchHigh: [], crownRing: [], crown: [] };
-const TOP = new THREE.Vector3(0, 11, 0);
-
-function growBranch(angle, lift, reach, radius, store, count) {
-  for (let k = 0; k < count; k++) {
-    const a = angle + k * ((Math.PI * 2) / count);
-    const end = new THREE.Vector3(
-      Math.cos(a) * reach,
-      11 + lift + Math.sin(k * 2.1) * 0.7,
-      Math.sin(a) * reach
-    );
-    const pts = [
-      TOP.clone(),
-      new THREE.Vector3(Math.cos(a) * reach * 0.4, 11 + lift * 0.55, Math.sin(a) * reach * 0.4),
-      new THREE.Vector3(Math.cos(a) * reach * 0.8, 11 + lift * 0.9, Math.sin(a) * reach * 0.8),
-      end,
-    ];
-    tree.add(tube(pts, radius, barkMat));
-    branchAnchors[store].push(end);
+// =================== THEME 02 · THE PRODUCTIVE LOFT (Active Tenant) ===================
+const active = {
+  wall:0xfffae6, floor:0xc4a482, floorRough:.6, window:0xffffff, windowI:.8,
+  dress(g){
+    const wood=mat(0xdbb48c); const yellow=mat(0xffda33); const teal=mat(0x00d98a); const leaf=mat(0x4f7a3a);
+    // Standing Desk
+    const desk = box(2.0, 1.2, 0.8, wood); desk.position.set(-3.3, 0.6, -1.4); desk.castShadow=true; g.add(desk);
+    const laptopBase = box(0.5, 0.05, 0.4, mat(0xdddddd)); laptopBase.position.set(-3.3, 1.22, -1.3); g.add(laptopBase);
+    const laptopScreen = box(0.5, 0.4, 0.05, emiss(0xffffff,1)); laptopScreen.position.set(-3.3, 1.4, -1.5); laptopScreen.rotation.x = -0.2; g.add(laptopScreen);
+    // Yoga/Gym area
+    const yogaMat = box(1.0, 0.02, 2.0, yellow); yogaMat.position.set(-2.3, 0.01, 1.1); g.add(yogaMat);
+    const dumbbell1 = cyl(0.1, 0.4, mat(0x444444)); dumbbell1.position.set(-1.5, 0.05, 0.5); dumbbell1.rotation.x=Math.PI/2; g.add(dumbbell1);
+    const dumbbell2 = cyl(0.1, 0.4, mat(0x444444)); dumbbell2.position.set(-1.5, 0.05, 0.8); dumbbell2.rotation.x=Math.PI/2; g.add(dumbbell2);
+    // Neat Kitchen
+    const counter=box(2.6,0.9,1.0, teal); counter.position.set(3.4,0.45,-1.4); counter.castShadow=true; g.add(counter);
+    const fridge=box(1.0, 2.2, 1.0, mat(0xeeeeee,{metalness:0.4})); fridge.position.set(4.5, 1.1, -1.4); g.add(fridge);
+    // Happy Plants
+    const pot = cyl(0.3, 0.4, mat(0xffffff)); pot.position.set(4.2, 0.2, 1.5); pot.castShadow=true; g.add(pot);
+    const plant = sphere(0.6, leaf); plant.scale.y=1.5; plant.position.set(4.2, 0.8, 1.5); plant.castShadow=true; g.add(plant);
+  },
+  light(g){
+    const amb=new THREE.PointLight(0xfffae6,2.5,11,2); amb.position.set(0,2.8,0.4); g.add(amb);
+    const task=new THREE.PointLight(0xffffff,2,6,2); task.position.set(-3.3,2.5,-1.0); g.add(task);
+  },
+  schedule(h){ // Up early, works out, goes to work, productive
+    if(h>=22 || h<5) return 'rest'; // bed
+    if(h>=5 && h<7)  return 'social'; // yoga mat
+    if(h>=7 && h<8)  return 'kitchen';
+    if(h>=8 && h<17) return 'out'; // at work
+    if(h>=17 && h<19) return 'work'; // at desk
+    if(h>=19 && h<20) return 'kitchen';
+    if(h>=20 && h<22) return 'social'; // yoga/reading
+    return 'rest';
   }
-}
-growBranch(0.2, 1.6, 7.5, 0.3, "branchLow", 6);
-growBranch(0.75, 3.4, 6.4, 0.24, "branchMid", 6);
-growBranch(0.4, 5.2, 4.9, 0.2, "branchHigh", 4);
-growBranch(1.0, 6.6, 3.0, 0.15, "crownRing", 3);
-branchAnchors.crown.push(new THREE.Vector3(0, 18.6, 0));
-/* crown spire */
-tree.add(tube([TOP.clone(), new THREE.Vector3(0.4, 15, -0.3), new THREE.Vector3(0, 18.6, 0)], 0.22, barkMat));
+};
 
-/* ---------- soft canopy blobs ---------- */
-const canopyMat = new THREE.MeshStandardMaterial({ color: 0x223a2a, roughness: 1, transparent: true, opacity: 0.85 });
-[["branchLow", 2.2], ["branchMid", 1.9], ["branchHigh", 1.6], ["crownRing", 1.3]].forEach(([zone, s]) => {
-  branchAnchors[zone].forEach((p) => {
-    const blob = new THREE.Mesh(new THREE.SphereGeometry(s, 12, 10), canopyMat);
-    blob.position.copy(p).y += s * 0.5;
-    blob.scale.y = 0.7;
-    tree.add(blob);
-  });
-});
-
-/* ================= ANCESTOR NODES ================= */
-const nodeGroup = new THREE.Group();
-tree.add(nodeGroup);
-const nodeGeo = new THREE.SphereGeometry(0.34, 18, 18);
-const haloTex = makeHaloTexture();
-const nodes = [];
-
-function makeHaloTexture() {
-  const c = document.createElement("canvas");
-  c.width = c.height = 128;
-  const g = c.getContext("2d");
-  const grad = g.createRadialGradient(64, 64, 4, 64, 64, 64);
-  grad.addColorStop(0, "rgba(255,214,130,0.9)");
-  grad.addColorStop(0.4, "rgba(255,190,90,0.35)");
-  grad.addColorStop(1, "rgba(255,190,90,0)");
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 128, 128);
-  return new THREE.CanvasTexture(c);
-}
-
-FAMILY.forEach((person) => {
-  let p;
-  if (person.zone === "root") p = rootTips[person.slot % rootTips.length].clone().multiplyScalar(0.96);
-  else if (person.zone === "trunk") p = new THREE.Vector3(person.slot ? 1.9 : -1.9, 4.4 + person.slot * 2.4, 1.4);
-  else p = branchAnchors[person.zone][person.slot % branchAnchors[person.zone].length].clone();
-
-  const isSelf = person.zone === "crown";
-  const mat = new THREE.MeshStandardMaterial({
-    color: isSelf ? 0xfff1c4 : 0xffd682,
-    emissive: isSelf ? 0xffc24d : 0xb97a1e,
-    emissiveIntensity: isSelf ? 1.4 : 0.7,
-    roughness: 0.35,
-  });
-  const m = new THREE.Mesh(nodeGeo, mat);
-  m.position.copy(p);
-  if (isSelf) m.scale.setScalar(1.5);
-  m.userData = person;
-
-  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, transparent: true, opacity: 0, depthWrite: false }));
-  halo.scale.setScalar(2.4);
-  m.add(halo);
-  m.userData.halo = halo;
-
-  nodeGroup.add(m);
-  nodes.push(m);
-});
-
-/* ================= ASHE — blue energy pulses ================= */
-const pulseMat = new THREE.MeshBasicMaterial({ color: 0x46c8ff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending });
-const pulses = [];
-for (let i = 0; i < 26; i++) {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), pulseMat);
-  m.userData = { curve: veinCurves[i % veinCurves.length], t: Math.random(), speed: 0.0016 + Math.random() * 0.0024 };
-  tree.add(m);
-  pulses.push(m);
-}
-const trunkPath = new THREE.CatmullRomCurve3([
-  new THREE.Vector3(0, -0.5, 0), new THREE.Vector3(0.3, 4, -0.2), new THREE.Vector3(-0.2, 8, 0.2), TOP.clone(),
-]);
-for (let i = 0; i < 10; i++) {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 8), pulseMat);
-  m.userData = { curve: trunkPath, t: Math.random(), speed: 0.002 + Math.random() * 0.002 };
-  tree.add(m);
-  pulses.push(m);
-}
-
-/* ================= golden ember particles ================= */
-const COUNT = 600;
-const pGeo = new THREE.BufferGeometry();
-const pPos = new Float32Array(COUNT * 3);
-const pSeed = new Float32Array(COUNT);
-for (let i = 0; i < COUNT; i++) {
-  pPos[i * 3] = (Math.random() - 0.5) * 44;
-  pPos[i * 3 + 1] = Math.random() * 24 - 4;
-  pPos[i * 3 + 2] = (Math.random() - 0.5) * 44;
-  pSeed[i] = Math.random() * Math.PI * 2;
-}
-pGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3));
-const embers = new THREE.Points(pGeo, new THREE.PointsMaterial({
-  color: 0xffc870, size: 0.14, transparent: true, opacity: 0.8,
-  blending: THREE.AdditiveBlending, depthWrite: false,
-}));
-scene.add(embers);
-
-/* ================= INTERACTION ================= */
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2(-2, -2);
-let targetRX = 0, targetRY = 0;
-let hovered = null;
-
-const card = document.getElementById("card");
-const cardGen = document.getElementById("cardGen");
-const cardName = document.getElementById("cardName");
-const cardDates = document.getElementById("cardDates");
-const cardLoc = document.getElementById("cardLoc");
-
-addEventListener("mousemove", (e) => {
-  mouse.x = (e.clientX / innerWidth) * 2 - 1;
-  mouse.y = -(e.clientY / innerHeight) * 2 + 1;
-  targetRY = mouse.x * 0.22;
-  targetRX = -mouse.y * 0.08;
-});
-
-function ripple(x, y) {
-  const r = document.createElement("div");
-  r.className = "ripple";
-  r.style.left = x + "px";
-  r.style.top = y + "px";
-  r.style.width = r.style.height = "20px";
-  document.body.appendChild(r);
-  gsap.to(r, { scale: 14, opacity: 0, duration: 1.4, ease: "power2.out", onComplete: () => r.remove() });
-}
-
-function setHover(node, e) {
-  if (hovered === node) return;
-  if (hovered) {
-    gsap.to(hovered.scale, { x: hovered.userData.zone === "crown" ? 1.5 : 1, y: hovered.userData.zone === "crown" ? 1.5 : 1, z: hovered.userData.zone === "crown" ? 1.5 : 1, duration: 0.5 });
-    gsap.to(hovered.userData.halo.material, { opacity: 0, duration: 0.5 });
+// =================== THEME 03 · THE PARTY PAD (Party Tenant) ===================
+const party = {
+  wall:0x1a1a24, floor:0x0d0d14, floorRough:.2, floorMetal:.8, window:0x0b0f16, windowI:.0,
+  dress(g){
+    const black=mat(0x111111); const magenta=mat(0xff2bd6); const cyan=mat(0x35e0ff);
+    // DJ Booth & Speakers
+    const djTable = box(2.0, 0.9, 0.8, black); djTable.position.set(-3.3, 0.45, -1.4); g.add(djTable);
+    const deck1 = cyl(0.2, 0.05, cyan); deck1.position.set(-3.7, 0.92, -1.4); g.add(deck1);
+    const deck2 = cyl(0.2, 0.05, magenta); deck2.position.set(-2.9, 0.92, -1.4); g.add(deck2);
+    const speaker1 = box(0.6, 1.2, 0.6, black); speaker1.position.set(-4.5, 0.6, -1.4); g.add(speaker1);
+    const speaker2 = box(0.6, 1.2, 0.6, black); speaker2.position.set(-2.1, 0.6, -1.4); g.add(speaker2);
+    // Neon Dancefloor & Lounge
+    const danceFloor = box(2.5, 0.05, 2.5, emiss(0xff2bd6, 0.5)); danceFloor.position.set(-2.3, 0.02, 1.1); g.add(danceFloor);
+    const sofa1 = box(2.0, 0.6, 0.8, cyan); sofa1.position.set(3.4, 0.3, 1.8); g.add(sofa1);
+    const sofa2 = box(0.8, 0.6, 2.0, cyan); sofa2.position.set(4.0, 0.3, 0.4); g.add(sofa2);
+    // Funky lighting props
+    const neonTube = cyl(0.05, 2.0, emiss(0x35e0ff, 2)); neonTube.rotation.z = Math.PI/4; neonTube.position.set(0, 1.5, Z_BACK+0.2); g.add(neonTube);
+  },
+  light(g){
+    const pink=new THREE.PointLight(0xff2bd6,4,8,2); pink.position.set(-2.3, 2.5, 1.1); g.add(pink);
+    const blue=new THREE.PointLight(0x35e0ff,4,8,2); blue.position.set(3.4, 2.0, 1.0); g.add(blue);
+  },
+  schedule(h){ // Sleeps all day, parties at night
+    if(h>=6 && h<16) return 'rest'; // sleeping through the day
+    if(h>=16 && h<18) return 'kitchen'; // late breakfast
+    if(h>=18 && h<22) return 'work'; // DJing
+    if(h>=22 || h<6) return 'out'; // at the club
+    return 'rest';
   }
-  hovered = node;
-  if (node) {
-    const s = node.userData.zone === "crown" ? 2.0 : 1.45;
-    gsap.to(node.scale, { x: s, y: s, z: s, duration: 0.6, ease: "back.out(2)" });
-    gsap.to(node.userData.halo.material, { opacity: 1, duration: 0.6 });
-    cardGen.textContent = node.userData.gen;
-    cardName.textContent = node.userData.name;
-    cardDates.textContent = node.userData.dates;
-    cardLoc.textContent = "Location to be added";
-    gsap.to(card, { right: 36, duration: 0.7, ease: "power3.out" });
-    if (e) ripple(e.clientX, e.clientY);
-    document.body.style.cursor = "pointer";
-  } else {
-    gsap.to(card, { right: -380, duration: 0.6, ease: "power3.in" });
-    document.body.style.cursor = "default";
-  }
+};
+
+const themes=[lazy, active, party];
+const colors=[0xa87aff, 0x00d98a, 0xff2bd6];
+const floors=[], npcs=[];
+themes.forEach((t,i)=>{
+  buildFloor(i,t);
+  const n=makeNPC(colors[i]); n.position.copy(SPOT.social); n.position.y=i*FH; scene.add(n);
+  npcs.push({grp:n,theme:t,level:i,cur:SPOT.social.clone()});
+});
+
+const base=box(FW+1.2,0.4,FD+1.2,mat(0x9a8f85, {roughness: 0.9}));
+base.position.set(0,-0.22,0); base.receiveShadow=true; scene.add(base);
+
+let hour=6.0, playing=true, speed=2.5;
+const $clock=document.getElementById('clock');
+const $day=document.getElementById('daylabel');
+const sTxt=[document.getElementById('s0'),document.getElementById('s1'),document.getElementById('s2')];
+document.getElementById('speed').addEventListener('input',e=>speed=+e.target.value);
+document.getElementById('play').addEventListener('click',e=>{
+  playing=!playing; e.target.textContent = playing?'⏸ PAUSE':'▶ PLAY';
+});
+
+const STATE_TXT={work:'at the desk/hobby',kitchen:'in the kitchen',social:'in the living space',
+  rest:'resting in bed',out:'away · out of unit'};
+const STATE_TXT_P={work:'DJing',rest:'asleep (daylight)',social:'on the dancefloor'};
+const STATE_TXT_A={work:'at the standing desk',social:'working out on mat'};
+const STATE_TXT_L={social:'watching TV on beanbags',rest:'snoozing'};
+
+function daylight(h){
+  if(h<5||h>=21) return 0;
+  if(h<7)  return smooth((h-5)/2)*0.85;
+  if(h<17) return 0.85+0.15*Math.sin((h-7)/10*Math.PI);
+  if(h<21) return smooth((21-h)/4)*0.85;
+  return 0;
+}
+function phase(h){
+  if(h>=5&&h<8) return 'dawn'; if(h>=8&&h<17) return 'day';
+  if(h>=17&&h<20) return 'dusk'; if(h>=20||h<5) return 'night'; return 'day';
 }
 
-addEventListener("mousemove", (e) => {
-  raycaster.setFromCamera(mouse, camera);
-  const hit = raycaster.intersectObjects(nodes, false)[0];
-  setHover(hit ? hit.object : null, e);
-});
+const cNight=new THREE.Color(0x070b14), cDay=new THREE.Color(0x6ca5e8);
+const tmp=new THREE.Vector3();
 
-addEventListener("resize", () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
+const clock=new THREE.Clock();
+function tick(){
+  const dt=clock.getDelta();
+  if(playing){ hour=(hour+dt*speed)%24; }
 
-/* ================= LOOP ================= */
-const clock = new THREE.Clock();
-function animate() {
-  requestAnimationFrame(animate);
-  const t = clock.getElapsedTime();
+  const dl=daylight(hour);
+  sun.intensity = dl*2.6;
+  sun.color.setHSL(lerp(0.05,0.11,dl), 0.6, 0.55);
+  const ang=(hour/24)*TAU;
+  sun.position.set(Math.cos(ang-1.2)*20, 6+dl*20, 12);
+  hemi.intensity = 0.06+dl*0.5;
+  scene.background = cNight.clone().lerp(cDay,dl);
+  renderer.toneMappingExposure = lerp(0.95,1.12,dl);
 
-  /* breathing trunk — the lineage is alive */
-  const breath = 1 + Math.sin(t * 0.9) * 0.018;
-  trunk.scale.set(breath, 1, breath);
+  npcs.forEach((n,i)=>{
+    const place=n.theme.schedule(hour);
+    if(place==='out'){ n.grp.visible=false; }
+    else{
+      n.grp.visible=true;
+      tmp.copy(SPOT[place]); tmp.y=n.level*FH;
+      n.cur.lerp(tmp, clamp(dt*2.2,0,1));
 
-  /* gentle parallax sway */
-  tree.rotation.y += (targetRY - tree.rotation.y) * 0.04;
-  tree.rotation.x += (targetRX - tree.rotation.x) * 0.04;
-  tree.rotation.z = Math.sin(t * 0.25) * 0.012;
+      const dist = n.cur.distanceTo(n.grp.position);
+      if (dist > 0.01) {
+          n.grp.position.y = n.cur.y + Math.abs(Math.sin(Date.now() * 0.01)) * 0.1; // Cute bobbing walk
+      } else {
+          n.grp.position.y = n.cur.y;
+      }
+      n.grp.position.x = n.cur.x;
+      n.grp.position.z = n.cur.z;
+    }
 
-  /* ashe pulses riding the veins */
-  pulses.forEach((p) => {
-    p.userData.t = (p.userData.t + p.userData.speed) % 1;
-    p.position.copy(p.userData.curve.getPointAt(p.userData.t));
-    p.material.opacity = 0.5 + Math.sin(p.userData.t * Math.PI) * 0.5;
+    let label = STATE_TXT[place];
+    if(i===2 && STATE_TXT_P[place]) label=STATE_TXT_P[place];
+    if(i===1 && STATE_TXT_A[place]) label=STATE_TXT_A[place];
+    if(i===0 && STATE_TXT_L[place]) label=STATE_TXT_L[place];
+    sTxt[i].textContent = (place==='out'?'— ':'· ')+label;
   });
 
-  /* drifting embers */
-  const pos = embers.geometry.attributes.position;
-  for (let i = 0; i < COUNT; i++) {
-    pos.array[i * 3 + 1] += 0.006 + Math.sin(pSeed[i]) * 0.002;
-    pos.array[i * 3] += Math.sin(t * 0.4 + pSeed[i]) * 0.004;
-    if (pos.array[i * 3 + 1] > 22) pos.array[i * 3 + 1] = -4;
-  }
-  pos.needsUpdate = true;
+  const hh=Math.floor(hour), mm=Math.floor((hour-hh)*60);
+  $clock.innerHTML=`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}<small>LOCAL</small>`;
+  $day.textContent='— '+phase(hour)+' —';
 
-  /* node shimmer */
-  nodes.forEach((n, i) => {
-    n.material.emissiveIntensity = (n.userData.zone === "crown" ? 1.4 : 0.7) + Math.sin(t * 2 + i) * 0.18;
-  });
-
-  renderer.render(scene, camera);
+  renderer.render(scene,camera);
+  requestAnimationFrame(tick);
 }
-animate();
+tick();
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+renderer.setSize(innerWidth,innerHeight);
 </script>
-</body>
-</html>
